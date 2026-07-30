@@ -3,6 +3,11 @@ import { z } from "zod";
 // Validado uma única vez no boot de cada processo (api/worker/cron) — falha
 // rápido e alto se faltar variável obrigatória, em vez de quebrar em runtime
 // no meio de um job.
+//
+// Sem SUPABASE_SERVICE_ROLE_KEY de propósito: o Lovable Cloud não expõe essa
+// chave (nem a senha do Postgres) pra fora do próprio app. A API usa o
+// access_token do usuário (RLS); o Worker nunca fala com o Postgres direto —
+// chama o endpoint interno HMAC do app web (ver integrations/internal-api.ts).
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -11,9 +16,13 @@ const envSchema = z.object({
 
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   SUPABASE_JWT_ISSUER: z.string().min(1),
   SUPABASE_JWKS_URL: z.string().url(),
+
+  // Base do app web (pnabavaliacaopro) — onde vivem os endpoints internos
+  // HMAC que o Worker chama pra gravar progresso/resultado de cada etapa.
+  INTERNAL_API_BASE_URL: z.string().url(),
+  RAILWAY_INTERNAL_SECRET: z.string().min(16),
 
   REDIS_URL: z.string().min(1),
 

@@ -4,13 +4,14 @@ import { APPLICATION_PROCESSING_QUEUE, type PipelineStage } from "./queueNames.j
 
 export interface ApplicationStageJobData {
   jobId: string;
-  workspaceId: string;
+  editalId: string;
   applicationId: string;
-  stageName: PipelineStage;
-  payload: unknown;
+  stage: PipelineStage;
 }
 
-export function createApplicationQueue(connection: Redis | ConnectionOptions): Queue<ApplicationStageJobData> {
+export function createApplicationQueue(
+  connection: Redis | ConnectionOptions,
+): Queue<ApplicationStageJobData> {
   return new Queue<ApplicationStageJobData>(APPLICATION_PROCESSING_QUEUE, { connection });
 }
 

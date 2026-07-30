@@ -1,17 +1,18 @@
-import { randomUUID } from "node:crypto";
 import { loadEnv } from "../shared/env.js";
 import { createLogger } from "../observability/logger.js";
-import { createServiceRoleClient, createUserScopedClient } from "../integrations/supabase.js";
+import { createUserScopedClient } from "../integrations/supabase.js";
+import { createInternalApiClient } from "../integrations/internal-api.js";
 import { createRedisConnection } from "../integrations/redis.js";
 import { createSupabaseJwksResolver } from "../security/jwt.js";
 import { createApplicationQueue, stageJobOptions } from "../shared/applicationQueue.js";
+import { PIPELINE_STAGES } from "../shared/queueNames.js";
 import { buildServer } from "./server.js";
 
 const env = loadEnv();
 const logger = createLogger(env);
 const redis = createRedisConnection(env);
 const queue = createApplicationQueue(redis);
-const serviceClient = createServiceRoleClient(env);
+const internalApi = createInternalApiClient(env);
 const getKey = createSupabaseJwksResolver(env.SUPABASE_JWKS_URL);
 
 const server = buildServer({
@@ -28,35 +29,31 @@ const server = buildServer({
     }
   },
   jobs: {
-    // RLS decide sozinha se a linha existe pra este usuário — não precisa de
-    // lógica extra de autorização aqui (ver ADR-4).
-    verifyMembership: async (userId, workspaceId, accessToken) => {
+    // RLS decide sozinha se a linha existe e é visível pro usuário -- não há
+    // organizations/workspaces nesta plataforma (tenancy única, ver ADR
+    // revisado no plano); a visibilidade da linha via RLS já é a autorização.
+    findApplicationEdital: async (applicationId, accessToken) => {
       const userClient = createUserScopedClient(env, accessToken);
       const { data } = await userClient
-        .from("workspace_members")
-        .select("user_id")
-        .eq("workspace_id", workspaceId)
-        .eq("user_id", userId)
+        .from("proponents")
+        .select("edital_id")
+        .eq("id", applicationId)
         .maybeSingle();
-      return data != null;
+      if (!data?.edital_id) return null;
+      return { editalId: data.edital_id as string };
     },
-    createProcessingJob: async ({ workspaceId, applicationId, createdBy }) => {
-      const jobId = randomUUID();
-      const { error } = await serviceClient.from("processing_jobs").insert({
-        id: jobId,
-        workspace_id: workspaceId,
-        application_id: applicationId,
-        status: "queued",
-        created_by: createdBy,
-      });
-      if (error) throw new Error(`Não foi possível criar o job: ${error.message}`);
-      return { jobId };
+    // A criação do job em si é escrita privilegiada (processing_jobs/
+    // job_stages) -- passa pelo endpoint interno HMAC do app web, não pelo
+    // Postgres direto (ver integrations/internal-api.ts).
+    createProcessingJob: async ({ editalId, applicationId, triggeredBy }) => {
+      return internalApi.createJob({ editalId, applicationId, triggeredBy });
     },
-    enqueueStage: async ({ jobId, workspaceId, applicationId, stageName, payload }) => {
+    enqueueFirstStage: async ({ jobId, editalId, applicationId }) => {
+      const firstStage = PIPELINE_STAGES[0];
       await queue.add(
-        stageName,
-        { jobId, workspaceId, applicationId, stageName, payload },
-        { jobId, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
+        firstStage,
+        { jobId, editalId, applicationId, stage: firstStage },
+        { jobId: `${jobId}:${firstStage}`, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
       );
     },
   },

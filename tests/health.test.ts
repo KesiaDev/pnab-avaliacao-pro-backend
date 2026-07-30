@@ -12,9 +12,9 @@ async function buildTestServer(checkReady: () => Promise<boolean>) {
     jwt: { getKey, issuer: "https://test.supabase.co/auth/v1" },
     checkReady,
     jobs: {
-      verifyMembership: async () => true,
+      findApplicationEdital: async () => ({ editalId: "edital-1" }),
       createProcessingJob: async () => ({ jobId: "job-1" }),
-      enqueueStage: async () => undefined,
+      enqueueFirstStage: async () => undefined,
     },
   });
 }
@@ -25,6 +25,13 @@ describe("GET /health", () => {
       throw new Error("checkReady não deveria ser chamado por /health");
     });
     const response = await server.inject({ method: "GET", url: "/health" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: "ok", version: "0.0.0-test" });
+  });
+
+  it("também responde em /v1/health (contrato consumido pelo app web)", async () => {
+    const server = await buildTestServer(async () => true);
+    const response = await server.inject({ method: "GET", url: "/v1/health" });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ status: "ok", version: "0.0.0-test" });
   });

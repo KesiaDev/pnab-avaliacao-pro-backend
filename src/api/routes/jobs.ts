@@ -1,74 +1,63 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import type { PipelineStage } from "../../shared/queueNames.js";
 
-const paramsSchema = z.object({
-  workspaceId: z.string().uuid(),
-  applicationId: z.string().min(1),
-});
-const bodySchema = z.object({ payload: z.unknown().optional() }).default({});
+const paramsSchema = z.object({ applicationId: z.string().uuid() });
 
 export interface JobsRoutesOptions {
-  verifyMembership: (userId: string, workspaceId: string, accessToken: string) => Promise<boolean>;
+  // Busca o edital_id do proponente via RLS (o cliente escopado ao usuário
+  // já garante que só volta linha se o usuário tiver permissão de leitura) —
+  // não existe checagem de papel separada: a visibilidade da linha via RLS
+  // já é a autorização (ver ADR revisado: tenancy única, sem
+  // organizations/workspaces).
+  findApplicationEdital: (
+    applicationId: string,
+    accessToken: string,
+  ) => Promise<{ editalId: string } | null>;
   createProcessingJob: (input: {
-    workspaceId: string;
+    editalId: string;
     applicationId: string;
-    createdBy: string;
+    triggeredBy: string;
   }) => Promise<{ jobId: string }>;
-  enqueueStage: (input: {
+  enqueueFirstStage: (input: {
     jobId: string;
-    workspaceId: string;
+    editalId: string;
     applicationId: string;
-    stageName: PipelineStage;
-    payload: unknown;
   }) => Promise<void>;
 }
 
-// ADR-1: este handler nunca espera o processamento — só valida, grava o job
-// como "queued" e enfileira. O trabalho de verdade acontece no Worker.
+// ADR-1: este handler nunca espera o processamento — só valida, cria o job
+// (via endpoint interno do app web, que tem acesso privilegiado) e enfileira
+// a primeira etapa. O trabalho de verdade acontece no Worker.
 const jobsRoutes: FastifyPluginAsync<JobsRoutesOptions> = async (fastify, opts) => {
   fastify.post(
-    "/workspaces/:workspaceId/applications/:applicationId/process",
+    "/v1/applications/:applicationId/process",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const params = paramsSchema.safeParse(request.params);
       if (!params.success) {
-        return reply
-          .code(400)
-          .send({ error: { code: "invalid_params", message: params.error.message } });
-      }
-      const body = bodySchema.safeParse(request.body ?? {});
-      if (!body.success) {
-        return reply.code(400).send({ error: { code: "invalid_body", message: body.error.message } });
+        return reply.code(400).send({ code: "invalid_params", message: params.error.message });
       }
 
-      // fastify.authenticate já rejeitou a requisição com 401 antes de chegar
-      // aqui se request.user não estivesse definido.
       const userId = request.user!.userId;
       const accessToken = request.user!.accessToken;
-      const { workspaceId, applicationId } = params.data;
+      const { applicationId } = params.data;
 
-      const isMember = await opts.verifyMembership(userId, workspaceId, accessToken);
-      if (!isMember) {
-        return reply
-          .code(403)
-          .send({ error: { code: "forbidden", message: "Sem acesso a este workspace." } });
+      const application = await opts.findApplicationEdital(applicationId, accessToken);
+      if (!application) {
+        return reply.code(404).send({
+          code: "not_found",
+          message: "Candidatura não encontrada ou sem permissão de acesso.",
+        });
       }
 
       const { jobId } = await opts.createProcessingJob({
-        workspaceId,
+        editalId: application.editalId,
         applicationId,
-        createdBy: userId,
+        triggeredBy: userId,
       });
-      await opts.enqueueStage({
-        jobId,
-        workspaceId,
-        applicationId,
-        stageName: "noop",
-        payload: body.data.payload,
-      });
+      await opts.enqueueFirstStage({ jobId, editalId: application.editalId, applicationId });
 
-      return reply.code(202).send({ job_id: jobId });
+      return reply.code(202).send({ jobId });
     },
   );
 };

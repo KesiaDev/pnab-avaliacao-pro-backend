@@ -7,9 +7,12 @@ import { createTestJwks } from "./helpers/jwt.js";
 const ISSUER = "https://test.supabase.co/auth/v1";
 
 async function buildTestServer(overrides: {
-  verifyMembership?: (userId: string, workspaceId: string, accessToken: string) => Promise<boolean>;
+  findApplicationEdital?: (
+    applicationId: string,
+    accessToken: string,
+  ) => Promise<{ editalId: string } | null>;
   createProcessingJob?: (input: unknown) => Promise<{ jobId: string }>;
-  enqueueStage?: (input: unknown) => Promise<void>;
+  enqueueFirstStage?: (input: unknown) => Promise<void>;
 }) {
   const jwks = await createTestJwks();
   const server = buildServer({
@@ -19,70 +22,70 @@ async function buildTestServer(overrides: {
     jwt: { getKey: jwks.getKey, issuer: ISSUER },
     checkReady: async () => true,
     jobs: {
-      verifyMembership: overrides.verifyMembership ?? (async () => true),
+      findApplicationEdital:
+        overrides.findApplicationEdital ?? (async () => ({ editalId: randomUUID() })),
       createProcessingJob: overrides.createProcessingJob ?? (async () => ({ jobId: "job-1" })),
-      enqueueStage: overrides.enqueueStage ?? (async () => undefined),
+      enqueueFirstStage: overrides.enqueueFirstStage ?? (async () => undefined),
     },
   });
   return { server, sign: jwks.sign };
 }
 
-const workspaceId = randomUUID();
-const applicationId = "app-mock-1";
+const applicationId = randomUUID();
 
-describe("POST /workspaces/:workspaceId/applications/:applicationId/process", () => {
+describe("POST /v1/applications/:applicationId/process", () => {
   it("rejeita sem token (ADR-1 nunca processa sem auth)", async () => {
     const { server } = await buildTestServer({});
     const response = await server.inject({
       method: "POST",
-      url: `/workspaces/${workspaceId}/applications/${applicationId}/process`,
+      url: `/v1/applications/${applicationId}/process`,
     });
     expect(response.statusCode).toBe(401);
+    expect(response.json().code).toBe("unauthorized");
   });
 
-  it("rejeita quando o usuário não é membro do workspace", async () => {
-    const { server, sign } = await buildTestServer({ verifyMembership: async () => false });
+  it("responde 404 quando a candidatura não existe ou não é visível via RLS", async () => {
+    const { server, sign } = await buildTestServer({ findApplicationEdital: async () => null });
     const token = await sign({ sub: randomUUID() }, { issuer: ISSUER });
     const response = await server.inject({
       method: "POST",
-      url: `/workspaces/${workspaceId}/applications/${applicationId}/process`,
+      url: `/v1/applications/${applicationId}/process`,
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(response.statusCode).toBe(403);
+    expect(response.statusCode).toBe(404);
   });
 
-  it("enfileira e devolve job_id rapidamente sem esperar processamento (ADR-1)", async () => {
-    const enqueueStage = vi.fn(async () => undefined);
+  it("enfileira e devolve jobId rapidamente sem esperar processamento (ADR-1)", async () => {
+    const enqueueFirstStage = vi.fn(async () => undefined);
     const { server, sign } = await buildTestServer({
       createProcessingJob: async () => ({ jobId: "job-abc" }),
-      enqueueStage,
+      enqueueFirstStage,
     });
     const token = await sign({ sub: randomUUID() }, { issuer: ISSUER });
 
     const start = Date.now();
     const response = await server.inject({
       method: "POST",
-      url: `/workspaces/${workspaceId}/applications/${applicationId}/process`,
+      url: `/v1/applications/${applicationId}/process`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { payload: { note: "teste" } },
     });
     const elapsedMs = Date.now() - start;
 
     expect(response.statusCode).toBe(202);
-    expect(response.json()).toEqual({ job_id: "job-abc" });
+    expect(response.json()).toEqual({ jobId: "job-abc" });
     expect(elapsedMs).toBeLessThan(500);
-    expect(enqueueStage).toHaveBeenCalledTimes(1);
+    expect(enqueueFirstStage).toHaveBeenCalledTimes(1);
   });
 
-  it("rejeita workspaceId inválido (contrato de erro { error: { code, message } })", async () => {
+  it("rejeita applicationId inválido com forma de erro plana (code/message)", async () => {
     const { server, sign } = await buildTestServer({});
     const token = await sign({ sub: randomUUID() }, { issuer: ISSUER });
     const response = await server.inject({
       method: "POST",
-      url: `/workspaces/not-a-uuid/applications/${applicationId}/process`,
+      url: "/v1/applications/not-a-uuid/process",
       headers: { authorization: `Bearer ${token}` },
     });
     expect(response.statusCode).toBe(400);
-    expect(response.json().error.code).toBe("invalid_params");
+    expect(response.json().code).toBe("invalid_params");
   });
 });

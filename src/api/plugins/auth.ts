@@ -25,14 +25,14 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (fastify, opts) 
   fastify.decorate("authenticate", async (request, reply) => {
     const header = request.headers.authorization;
     if (!header?.startsWith("Bearer ")) {
-      return reply.code(401).send({ error: { code: "unauthorized", message: "Token ausente." } });
+      return reply.code(401).send({ code: "unauthorized", message: "Token ausente.", retryable: false });
     }
     const token = header.slice("Bearer ".length);
     try {
       request.user = await verifyAccessToken(token, opts.getKey, opts.issuer);
     } catch (err) {
       const message = err instanceof AuthError ? err.message : "Token inválido.";
-      return reply.code(401).send({ error: { code: "unauthorized", message } });
+      return reply.code(401).send({ code: "unauthorized", message, retryable: false });
     }
   });
 };

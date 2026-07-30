@@ -33,19 +33,32 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
   fastify.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
   fastify.register(authPlugin, { getKey: opts.jwt.getKey, issuer: opts.jwt.issuer });
+  // Bare /health e /ready: usados pelo healthcheck do próprio Railway
+  // (railway.json). /v1/health: mesma info, sob o contrato que o frontend
+  // consome (ver editaisApi.health() em src/lib/api/endpoints.ts do app web).
   fastify.register(healthRoutes, { appVersion: opts.appVersion, checkReady: opts.checkReady });
+  fastify.register(
+    async (instance) => {
+      instance.register(healthRoutes, { appVersion: opts.appVersion, checkReady: opts.checkReady });
+    },
+    { prefix: "/v1" },
+  );
   fastify.register(jobsRoutes, opts.jobs);
 
-  // Contrato de erro único — nunca stack trace pro cliente, log completo só
-  // no Pino server-side (ver Contratos no plano).
+  // Forma de erro plana, batendo com src/lib/api/errors.ts (toApiError) do
+  // app web: { code, message, stage?, retryable?, preserved?, details? } —
+  // nunca { error: {...} }, nunca stack trace pro cliente. Log completo só
+  // no Pino server-side.
   fastify.setErrorHandler((error: FastifyError, request, reply) => {
     request.log.error({ err: error }, "unhandled_error");
     if (error.validation) {
-      return reply.code(400).send({ error: { code: "bad_request", message: error.message } });
+      return reply.code(400).send({ code: "bad_request", message: error.message });
     }
     const statusCode = error.statusCode ?? 500;
     return reply.code(statusCode).send({
-      error: { code: statusCode === 500 ? "internal_error" : "request_error", message: error.message },
+      code: statusCode === 500 ? "internal_error" : "request_error",
+      message: error.message,
+      retryable: statusCode >= 500,
     });
   });
 

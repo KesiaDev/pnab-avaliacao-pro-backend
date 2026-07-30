@@ -1,3 +1,8 @@
+# Sem pasta migrations/ nesta imagem de propósito: o schema (Postgres do
+# Supabase) é gerenciado pelo repo web (pnabavaliacaopro/supabase/migrations),
+# não por este backend -- ver REVISÃO no plano sobre o Lovable Cloud não
+# expor service_role/senha do banco pra este serviço.
+#
 # Poppler (pdfinfo/pdftotext/pdftoppm) entra desde já, mesmo o pipeline de
 # PDF só ligando na Fase 6 — evita reconstruir a imagem base depois.
 FROM node:20-slim AS base
@@ -20,7 +25,6 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
-COPY migrations ./migrations
 
 # O comando real (API, Worker ou Cron Drive) é definido pelo "startCommand"
 # de cada serviço no railway.json -- esta imagem é compartilhada pelos três.
