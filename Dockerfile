@@ -5,7 +5,7 @@
 #
 # Poppler (pdfinfo/pdftotext/pdftoppm) entra desde já, mesmo o pipeline de
 # PDF só ligando na Fase 6 — evita reconstruir a imagem base depois.
-FROM node:20-slim AS base
+FROM node:22-slim AS base
 RUN apt-get update \
   && apt-get install -y --no-install-recommends poppler-utils \
   && rm -rf /var/lib/apt/lists/*
