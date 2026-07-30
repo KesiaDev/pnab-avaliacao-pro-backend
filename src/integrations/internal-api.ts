@@ -26,6 +26,34 @@ export interface UpdateStageInput {
   preserved?: boolean;
 }
 
+export interface CreateDriveConnectionInput {
+  connectedBy: string;
+  googleEmail: string | null;
+  refreshTokenEncryptedHex: string;
+  scope: string;
+}
+
+export interface CreateDriveSourceInput {
+  connectionId: string;
+  editalId: string;
+  driveFolderId: string;
+  folderName: string | null;
+}
+
+export interface CreateSyncRunInput {
+  driveSourceId: string;
+  editalId: string;
+  kind: "baseline" | "incremental";
+  triggeredBy: string;
+}
+
+export interface FinishSyncRunInput {
+  syncRunId: string;
+  status: "concluido" | "erro";
+  stats?: Record<string, number> | null;
+  errorMessage?: string | null;
+}
+
 export class InternalApiError extends Error {
   constructor(
     message: string,
@@ -91,6 +119,22 @@ export function createInternalApiClient(
           preserved: input.preserved,
         },
       ),
+    createDriveConnection: (input: CreateDriveConnectionInput) =>
+      signedPost<{ id: string }>(env, "/api/internal/drive-connections", input),
+    createDriveSource: (input: CreateDriveSourceInput) =>
+      signedPost<{ id: string; folderName: string | null }>(
+        env,
+        "/api/internal/drive-sources",
+        input,
+      ),
+    createSyncRun: (input: CreateSyncRunInput) =>
+      signedPost<{ id: string }>(env, "/api/internal/sync-runs", input),
+    finishSyncRun: (input: FinishSyncRunInput) =>
+      signedPost<{ ok: true }>(env, `/api/internal/sync-runs/${input.syncRunId}/finish`, {
+        status: input.status,
+        stats: input.stats,
+        errorMessage: input.errorMessage,
+      }),
   };
 }
 

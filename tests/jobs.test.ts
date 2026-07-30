@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { buildServer } from "../src/api/server.js";
 import { createLogger } from "../src/observability/logger.js";
 import { createTestJwks } from "./helpers/jwt.js";
+import { driveOptionsStub } from "./helpers/driveOptionsStub.js";
 
 const ISSUER = "https://test.supabase.co/auth/v1";
 
@@ -27,6 +28,7 @@ async function buildTestServer(overrides: {
       createProcessingJob: overrides.createProcessingJob ?? (async () => ({ jobId: "job-1" })),
       enqueueFirstStage: overrides.enqueueFirstStage ?? (async () => undefined),
     },
+    drive: driveOptionsStub(),
   });
   return { server, sign: jwks.sign };
 }

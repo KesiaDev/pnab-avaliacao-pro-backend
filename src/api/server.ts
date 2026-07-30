@@ -7,6 +7,7 @@ import type { Logger } from "../observability/logger.js";
 import authPlugin from "./plugins/auth.js";
 import healthRoutes from "./routes/health.js";
 import jobsRoutes, { type JobsRoutesOptions } from "./routes/jobs.js";
+import driveRoutes, { type DriveRoutesOptions } from "./routes/drive.js";
 
 export interface BuildServerOptions {
   logger: Logger;
@@ -15,6 +16,7 @@ export interface BuildServerOptions {
   jwt: { getKey: JWTVerifyGetKey; issuer: string };
   checkReady: () => Promise<boolean>;
   jobs: JobsRoutesOptions;
+  drive: DriveRoutesOptions;
 }
 
 // Fábrica pura (não dá listen) — permite testar com fastify.inject() sem
@@ -44,6 +46,7 @@ export function buildServer(opts: BuildServerOptions): FastifyInstance {
     { prefix: "/v1" },
   );
   fastify.register(jobsRoutes, opts.jobs);
+  fastify.register(driveRoutes, opts.drive);
 
   // Forma de erro plana, batendo com src/lib/api/errors.ts (toApiError) do
   // app web: { code, message, stage?, retryable?, preserved?, details? } —

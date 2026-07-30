@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildServer } from "../src/api/server.js";
 import { createLogger } from "../src/observability/logger.js";
 import { createTestJwks } from "./helpers/jwt.js";
+import { driveOptionsStub } from "./helpers/driveOptionsStub.js";
 
 async function buildTestServer(checkReady: () => Promise<boolean>) {
   const { getKey } = await createTestJwks();
@@ -16,6 +17,7 @@ async function buildTestServer(checkReady: () => Promise<boolean>) {
       createProcessingJob: async () => ({ jobId: "job-1" }),
       enqueueFirstStage: async () => undefined,
     },
+    drive: driveOptionsStub(),
   });
 }
 

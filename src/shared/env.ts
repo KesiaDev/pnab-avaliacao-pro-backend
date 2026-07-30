@@ -36,10 +36,10 @@ const envSchema = z.object({
   OPENAI_USE_BATCH: z.coerce.boolean().default(false),
   OPENAI_USE_BACKGROUND_FOR_ESCALATION: z.coerce.boolean().default(true),
 
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_REDIRECT_URI: z.string().optional(),
-  TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().min(1),
+  GOOGLE_CLIENT_SECRET: z.string().min(1),
+  GOOGLE_REDIRECT_URI: z.string().url(),
+  TOKEN_ENCRYPTION_KEY: z.string().length(64),
 
   DEFAULT_COST_LIMIT_PER_APPLICATION_USD: z.coerce.number().positive().default(5),
   DEFAULT_COST_LIMIT_PER_EDITAL_USD: z.coerce.number().positive().default(500),

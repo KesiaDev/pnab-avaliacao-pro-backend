@@ -6,7 +6,9 @@ import { createRedisConnection } from "../integrations/redis.js";
 import { APPLICATION_PROCESSING_QUEUE, APPLICATION_PROCESSING_DLQ } from "../shared/queueNames.js";
 import type { ApplicationStageJobData } from "../shared/applicationQueue.js";
 import { stageJobOptions } from "../shared/applicationQueue.js";
+import { DRIVE_SYNC_QUEUE, type DriveSyncJobData } from "../shared/driveSyncQueue.js";
 import { processStageJob } from "./processStageJob.js";
+import { processSyncJob } from "./processSyncJob.js";
 
 const env = loadEnv();
 const logger = createLogger(env);
@@ -69,12 +71,34 @@ worker.on("failed", async (job, err) => {
   await dlq.add(job.data.stage, job.data, { jobId: `${job.data.jobId}:${job.data.stage}:dlq` });
 });
 
+const syncWorker = new Worker<DriveSyncJobData>(
+  DRIVE_SYNC_QUEUE,
+  async (job) => {
+    const jobLogger = logger.child({ syncRunId: job.data.syncRunId, editalId: job.data.editalId });
+    await processSyncJob(job.data, {
+      logger: jobLogger,
+      finishSyncRun: async (input) => {
+        await internalApi.finishSyncRun(input);
+      },
+    });
+  },
+  { connection: redis, concurrency: env.MAX_CONCURRENT_APPLICATIONS },
+);
+
+syncWorker.on("completed", (job) => {
+  logger.info({ syncRunId: job.data.syncRunId }, "sync_completed");
+});
+syncWorker.on("failed", (job, err) => {
+  logger.error({ syncRunId: job?.data.syncRunId, err }, "sync_failed");
+});
+
 logger.info({ concurrency: env.MAX_CONCURRENT_APPLICATIONS }, "worker_listening");
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, async () => {
     logger.info({ signal }, "worker_shutting_down");
     await worker.close();
+    await syncWorker.close();
     await queue.close();
     await dlq.close();
     await redis.quit();
