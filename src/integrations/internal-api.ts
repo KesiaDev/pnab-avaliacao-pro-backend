@@ -1,6 +1,15 @@
 import { createHmac } from "node:crypto";
+import { Agent } from "undici";
 import type { Env } from "../shared/env.js";
 import type { PipelineStage, StageState } from "../shared/queueNames.js";
+
+// O fetch nativo do Node (undici por baixo) tem um headersTimeout padrão de
+// 300s que NÃO é coberto por AbortSignal.timeout -- ele mata a conexão antes
+// do nosso próprio timeout, mesmo com a chamada ainda progredindo do outro
+// lado. executeSyncRun roda minutos (varredura + download + upload arquivo a
+// arquivo), então usa este Agent com timeouts bem maiores; as demais chamadas
+// (rápidas) usam o dispatcher padrão.
+const longRunningAgent = new Agent({ headersTimeout: 20 * 60 * 1000, bodyTimeout: 20 * 60 * 1000 });
 
 // Cliente HTTP assinado (HMAC) pro app web pnabavaliacaopro. É o único jeito
 // deste backend gravar dado privilegiado: o Lovable Cloud não expõe
@@ -80,7 +89,7 @@ async function signedPost<T>(
   env: Pick<Env, "INTERNAL_API_BASE_URL" | "RAILWAY_INTERNAL_SECRET">,
   path: string,
   payload: unknown,
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; longRunning?: boolean },
 ): Promise<T> {
   const body = JSON.stringify(payload);
   const timestamp = String(Date.now());
@@ -95,6 +104,9 @@ async function signedPost<T>(
     },
     body,
     signal: opts?.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
+    // @ts-expect-error -- "dispatcher" não está no lib.dom.d.ts do fetch
+    // padrão, mas o fetch nativo do Node (undici por baixo) aceita.
+    dispatcher: opts?.longRunning ? longRunningAgent : undefined,
   });
 
   const text = await res.text();
@@ -155,7 +167,7 @@ export function createInternalApiClient(
         env,
         `/api/internal/sync-runs/${input.syncRunId}/execute`,
         { accessToken: input.accessToken },
-        { timeoutMs: 15 * 60 * 1000 },
+        { timeoutMs: 20 * 60 * 1000, longRunning: true },
       ),
   };
 }
