@@ -55,7 +55,9 @@ const server = buildServer({
       await queue.add(
         firstStage,
         { jobId, editalId, applicationId, stage: firstStage },
-        { jobId: `${jobId}:${firstStage}`, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
+        // BullMQ rejeita ":" no id do job ("Custom Id cannot contain :" --
+        // é caractere reservado de namespace de chave no Redis).
+        { jobId: `${jobId}-${firstStage}`, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
       );
     },
   },

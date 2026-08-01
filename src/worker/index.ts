@@ -46,7 +46,8 @@ const worker = new Worker<ApplicationStageJobData>(
         await queue.add(
           input.stage,
           { jobId: input.jobId, editalId: input.editalId, applicationId: input.applicationId, stage: input.stage },
-          { jobId: `${input.jobId}:${input.stage}`, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
+          // BullMQ rejeita ":" no id do job ("Custom Id cannot contain :").
+          { jobId: `${input.jobId}-${input.stage}`, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
         );
       },
       internalApi,
@@ -71,7 +72,7 @@ worker.on("failed", async (job, err) => {
     "stage_failed",
   );
   if (!exhausted) return;
-  await dlq.add(job.data.stage, job.data, { jobId: `${job.data.jobId}:${job.data.stage}:dlq` });
+  await dlq.add(job.data.stage, job.data, { jobId: `${job.data.jobId}-${job.data.stage}-dlq` });
 });
 
 const syncWorker = new Worker<DriveSyncJobData>(
