@@ -19,6 +19,7 @@ export function driveOptionsStub(overrides: Partial<DriveRoutesOptions> = {}): D
     },
     findActiveConnection: async () => null,
     findDriveSourceForEdital: async () => null,
+    findActiveSyncRun: async () => null,
     enqueueSync: async () => undefined,
     ...overrides,
   };

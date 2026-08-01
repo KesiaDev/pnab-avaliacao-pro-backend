@@ -216,4 +216,23 @@ describe("POST /v1/editais/:editalId/sync", () => {
     expect(response.statusCode).toBe(409);
     expect(response.json().code).toBe("no_active_connection");
   });
+
+  it("responde 409 quando já há uma sincronização em andamento pra pasta", async () => {
+    const enqueueSync = vi.fn(async () => undefined);
+    const { server, sign } = await buildTestServer({
+      findDriveSourceForEdital: async () => ({ id: "source-1" }),
+      findActiveConnection: async () => ({ id: "conn-1", refreshTokenEncryptedHex: "\\xdeadbeef" }),
+      findActiveSyncRun: async () => ({ id: "sync-already-running" }),
+      enqueueSync,
+    });
+    const token = await sign({ sub: randomUUID() }, { issuer: ISSUER });
+    const response = await server.inject({
+      method: "POST",
+      url: `/v1/editais/${randomUUID()}/sync`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("sync_already_running");
+    expect(enqueueSync).not.toHaveBeenCalled();
+  });
 });

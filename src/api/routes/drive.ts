@@ -27,6 +27,11 @@ export interface DriveRoutesOptions {
     editalId: string,
     accessToken: string,
   ) => Promise<{ id: string } | null>;
+  // Evita empilhar sincronizações concorrentes pra mesma pasta -- clique
+  // duplo/repetido no "Sincronizar agora" gerava vários sync_runs
+  // "em_andamento" disputando as mesmas linhas (proponents/source_folders)
+  // ao mesmo tempo, sem nenhum nunca terminar de forma previsível.
+  findActiveSyncRun: (driveSourceId: string, accessToken: string) => Promise<{ id: string } | null>;
   enqueueSync: (input: {
     syncRunId: string;
     driveSourceId: string;
@@ -183,6 +188,13 @@ const driveRoutes: FastifyPluginAsync<DriveRoutesOptions> = async (fastify, opts
         return reply.code(409).send({
           code: "no_active_connection",
           message: "Conecte uma conta Google antes de sincronizar.",
+        });
+      }
+      const activeSyncRun = await opts.findActiveSyncRun(source.id, request.user!.accessToken);
+      if (activeSyncRun) {
+        return reply.code(409).send({
+          code: "sync_already_running",
+          message: "Já existe uma sincronização em andamento para esta pasta-fonte.",
         });
       }
 

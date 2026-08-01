@@ -95,6 +95,18 @@ const server = buildServer({
         .maybeSingle();
       return data ? { id: data.id as string } : null;
     },
+    findActiveSyncRun: async (driveSourceId, accessToken) => {
+      const userClient = createUserScopedClient(env, accessToken);
+      const { data } = await userClient
+        .from("sync_runs")
+        .select("id")
+        .eq("drive_source_id", driveSourceId)
+        .eq("status", "em_andamento")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data ? { id: data.id as string } : null;
+    },
     enqueueSync: async ({ syncRunId, driveSourceId, editalId, refreshTokenEncryptedHex }) => {
       await syncQueue.add(
         "sync",
