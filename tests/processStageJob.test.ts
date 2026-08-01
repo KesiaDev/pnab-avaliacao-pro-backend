@@ -17,6 +17,10 @@ function makeDeps() {
   return {
     reportStageState: vi.fn(async () => undefined),
     enqueueNextStage: vi.fn(async () => undefined),
+    // Stub mínimo -- só os stages "download"/"extracao_textual" chamam
+    // métodos do internalApi de verdade, e nenhum teste aqui exercita eles
+    // (usa "inventario", no-op, e "fragmentacao", ainda não implementado).
+    internalApi: {} as never,
     logger: createLogger({ NODE_ENV: "test" }),
   };
 }
@@ -46,14 +50,17 @@ describe("processStageJob", () => {
 
   it("reporta 'falhou' e relança a exceção pro BullMQ decidir o retry, sem enfileirar a próxima etapa", async () => {
     const deps = makeDeps();
-    const data = makeJobData({ stage: "download" }); // não implementado nesta fase
+    const data = makeJobData({ stage: "fragmentacao" }); // não implementado nesta fase
 
     await expect(processStageJob(data, 1, deps)).rejects.toThrow(
-      'Stage "download" ainda não implementado nesta fase.',
+      'Stage "fragmentacao" ainda não implementado nesta fase.',
     );
     expect(deps.reportStageState).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ state: "falhou", errorMessage: expect.stringContaining("download") }),
+      expect.objectContaining({
+        state: "falhou",
+        errorMessage: expect.stringContaining("fragmentacao"),
+      }),
     );
     expect(deps.enqueueNextStage).not.toHaveBeenCalled();
   });

@@ -49,6 +49,7 @@ const worker = new Worker<ApplicationStageJobData>(
           { jobId: `${input.jobId}:${input.stage}`, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
         );
       },
+      internalApi,
     });
   },
   { connection: redis, concurrency: env.MAX_CONCURRENT_APPLICATIONS },

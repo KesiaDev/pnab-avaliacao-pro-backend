@@ -1,4 +1,5 @@
 import type { Logger } from "../observability/logger.js";
+import type { InternalApiClient } from "../integrations/internal-api.js";
 import { getStageHandler } from "./stageRegistry.js";
 import { PIPELINE_STAGES, type PipelineStage } from "../shared/queueNames.js";
 import type { ApplicationStageJobData } from "../shared/applicationQueue.js";
@@ -24,6 +25,7 @@ export interface ProcessStageDeps {
     applicationId: string;
     stage: PipelineStage;
   }) => Promise<void>;
+  internalApi: InternalApiClient;
   logger: Logger;
 }
 
@@ -47,7 +49,12 @@ export async function processStageJob(
 
   try {
     const handler = getStageHandler(data.stage);
-    await handler({ editalId: data.editalId, applicationId: data.applicationId });
+    await handler({
+      editalId: data.editalId,
+      applicationId: data.applicationId,
+      internalApi: deps.internalApi,
+      logger: deps.logger,
+    });
 
     await deps.reportStageState({
       jobId: data.jobId,

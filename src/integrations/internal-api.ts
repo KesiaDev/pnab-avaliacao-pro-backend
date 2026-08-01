@@ -75,6 +75,34 @@ export interface ExecuteSyncRunInput {
   accessToken: string;
 }
 
+export interface ProponentFile {
+  fileId: string;
+  fileVersionId: string;
+  nome: string;
+  mimeType: string | null;
+  tipoDocumental: string;
+  // URL assinada de leitura (Supabase Storage, ~15min) -- o Worker baixa
+  // direto dela, o app web nunca manda o binário por dentro do JSON.
+  downloadUrl: string;
+}
+
+export type PageQuality = "boa" | "baixa" | "imagem_pura";
+
+export interface DocumentPageInput {
+  numeroPagina: number;
+  texto: string;
+  textLength: number;
+  printableRatio: number | null;
+  qualidade: PageQuality;
+  precisaVisao: boolean;
+}
+
+export interface SaveDocumentPagesInput {
+  fileId: string;
+  fileVersionId: string;
+  pages: DocumentPageInput[];
+}
+
 export class InternalApiError extends Error {
   constructor(
     message: string,
@@ -175,6 +203,14 @@ export function createInternalApiClient(
         { accessToken: input.accessToken },
         { timeoutMs: 20 * 60 * 1000, longRunning: true },
       ),
+    listProponentFiles: (proponentId: string) =>
+      signedPost<{ files: ProponentFile[] }>(
+        env,
+        `/api/internal/proponents/${proponentId}/files`,
+        {},
+      ),
+    saveDocumentPages: (input: SaveDocumentPagesInput) =>
+      signedPost<{ ok: true; saved: number }>(env, "/api/internal/document-pages", input),
   };
 }
 
