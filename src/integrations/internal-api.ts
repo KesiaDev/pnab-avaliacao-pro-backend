@@ -1,14 +1,18 @@
 import { createHmac } from "node:crypto";
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 import type { Env } from "../shared/env.js";
 import type { PipelineStage, StageState } from "../shared/queueNames.js";
 
-// O fetch nativo do Node (undici por baixo) tem um headersTimeout padrão de
+// O fetch nativo do Node (undici embutido) tem um headersTimeout padrão de
 // 300s que NÃO é coberto por AbortSignal.timeout -- ele mata a conexão antes
 // do nosso próprio timeout, mesmo com a chamada ainda progredindo do outro
 // lado. executeSyncRun roda minutos (varredura + download + upload arquivo a
-// arquivo), então usa este Agent com timeouts bem maiores; as demais chamadas
-// (rápidas) usam o dispatcher padrão.
+// arquivo), então usa o fetch + Agent do pacote "undici" (não o fetch global
+// do Node) com timeouts bem maiores -- misturar um Agent de um "undici" só
+// instalado via npm com o fetch nativo do Node quebra ("invalid
+// onRequestStart method"), já que as duas cópias podem divergir de versão;
+// usando fetch e Agent do mesmo pacote isso nunca acontece. As demais
+// chamadas (rápidas) continuam no fetch global padrão.
 const longRunningAgent = new Agent({ headersTimeout: 20 * 60 * 1000, bodyTimeout: 20 * 60 * 1000 });
 
 // Cliente HTTP assinado (HMAC) pro app web pnabavaliacaopro. É o único jeito
@@ -95,19 +99,21 @@ async function signedPost<T>(
   const timestamp = String(Date.now());
   const signature = sign(env.RAILWAY_INTERNAL_SECRET, timestamp, body);
 
-  const res = await fetch(`${env.INTERNAL_API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-internal-timestamp": timestamp,
-      "x-internal-signature": signature,
-    },
-    body,
-    signal: opts?.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
-    // @ts-expect-error -- "dispatcher" não está no lib.dom.d.ts do fetch
-    // padrão, mas o fetch nativo do Node (undici por baixo) aceita.
-    dispatcher: opts?.longRunning ? longRunningAgent : undefined,
-  });
+  const url = `${env.INTERNAL_API_BASE_URL}${path}`;
+  const headers = {
+    "content-type": "application/json",
+    "x-internal-timestamp": timestamp,
+    "x-internal-signature": signature,
+  };
+  const signal = opts?.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined;
+
+  // Tipos de fetch/Agent do pacote "undici" e os do fetch global do Node
+  // (undici-types, via @types/node) não são estruturalmente idênticos --
+  // por isso os dois branches ficam separados em vez de uma chamada
+  // genérica só com "dispatcher" condicional.
+  const res = opts?.longRunning
+    ? await undiciFetch(url, { method: "POST", headers, body, signal, dispatcher: longRunningAgent })
+    : await fetch(url, { method: "POST", headers, body, signal });
 
   const text = await res.text();
   const json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
