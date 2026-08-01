@@ -17,13 +17,22 @@ export interface DriveRoutesOptions {
   internalApi: InternalApiClient;
   // A conexão Google é única por sistema (não por edital, ver
   // useActiveDriveConnection no app web) -- lida via RLS com o token do
-  // usuário, nunca assumida a partir de um header.
-  findActiveConnection: (accessToken: string) => Promise<{ id: string } | null>;
+  // usuário, nunca assumida a partir de um header. refreshTokenEncryptedHex
+  // (formato \x..., bytea) viaja até o Worker pela fila pra renovar o
+  // access_token antes da varredura -- nunca fica em texto plano.
+  findActiveConnection: (
+    accessToken: string,
+  ) => Promise<{ id: string; refreshTokenEncryptedHex: string } | null>;
   findDriveSourceForEdital: (
     editalId: string,
     accessToken: string,
   ) => Promise<{ id: string } | null>;
-  enqueueSync: (input: { syncRunId: string; driveSourceId: string; editalId: string }) => Promise<void>;
+  enqueueSync: (input: {
+    syncRunId: string;
+    driveSourceId: string;
+    editalId: string;
+    refreshTokenEncryptedHex: string;
+  }) => Promise<void>;
 }
 
 const startBodySchema = z.object({ editalId: z.string().uuid() });
@@ -169,6 +178,13 @@ const driveRoutes: FastifyPluginAsync<DriveRoutesOptions> = async (fastify, opts
           message: "Defina a pasta-fonte deste edital antes de sincronizar.",
         });
       }
+      const connection = await opts.findActiveConnection(request.user!.accessToken);
+      if (!connection) {
+        return reply.code(409).send({
+          code: "no_active_connection",
+          message: "Conecte uma conta Google antes de sincronizar.",
+        });
+      }
 
       const { id: syncRunId } = await opts.internalApi.createSyncRun({
         driveSourceId: source.id,
@@ -177,7 +193,12 @@ const driveRoutes: FastifyPluginAsync<DriveRoutesOptions> = async (fastify, opts
         triggeredBy: request.user!.userId,
       });
 
-      await opts.enqueueSync({ syncRunId, driveSourceId: source.id, editalId: params.data.editalId });
+      await opts.enqueueSync({
+        syncRunId,
+        driveSourceId: source.id,
+        editalId: params.data.editalId,
+        refreshTokenEncryptedHex: connection.refreshTokenEncryptedHex,
+      });
 
       return reply.code(202).send({ syncRunId });
     },

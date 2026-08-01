@@ -7,6 +7,9 @@ export interface DriveSyncJobData {
   syncRunId: string;
   driveSourceId: string;
   editalId: string;
+  // Formato \x... (bytea hex), mesmo já persistido em drive_connections --
+  // ainda cifrado em trânsito/na fila, só o Worker tem a chave pra abrir.
+  refreshTokenEncryptedHex: string;
 }
 
 export function createDriveSyncQueue(

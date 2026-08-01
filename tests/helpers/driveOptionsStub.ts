@@ -15,6 +15,7 @@ export function driveOptionsStub(overrides: Partial<DriveRoutesOptions> = {}): D
       createDriveSource: async () => ({ id: "source-1", folderName: null }),
       createSyncRun: async () => ({ id: "sync-1" }),
       finishSyncRun: async () => ({ ok: true as const }),
+      executeSyncRun: async () => ({ ok: true as const, stats: {} }),
     },
     findActiveConnection: async () => null,
     findDriveSourceForEdital: async () => null,

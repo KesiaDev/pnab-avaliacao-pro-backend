@@ -7,6 +7,8 @@ import { APPLICATION_PROCESSING_QUEUE, APPLICATION_PROCESSING_DLQ } from "../sha
 import type { ApplicationStageJobData } from "../shared/applicationQueue.js";
 import { stageJobOptions } from "../shared/applicationQueue.js";
 import { DRIVE_SYNC_QUEUE, type DriveSyncJobData } from "../shared/driveSyncQueue.js";
+import { decryptRefreshToken, pgByteaToBuffer } from "../security/tokenEncryption.js";
+import { refreshAccessToken } from "../integrations/googleOAuth.js";
 import { processStageJob } from "./processStageJob.js";
 import { processSyncJob } from "./processSyncJob.js";
 
@@ -77,6 +79,15 @@ const syncWorker = new Worker<DriveSyncJobData>(
     const jobLogger = logger.child({ syncRunId: job.data.syncRunId, editalId: job.data.editalId });
     await processSyncJob(job.data, {
       logger: jobLogger,
+      getGoogleAccessToken: async (refreshTokenEncryptedHex) => {
+        const refreshToken = decryptRefreshToken(
+          pgByteaToBuffer(refreshTokenEncryptedHex),
+          env.TOKEN_ENCRYPTION_KEY,
+        );
+        const { access_token } = await refreshAccessToken(env, refreshToken);
+        return access_token;
+      },
+      executeSyncRun: async (input) => internalApi.executeSyncRun(input),
       finishSyncRun: async (input) => {
         await internalApi.finishSyncRun(input);
       },

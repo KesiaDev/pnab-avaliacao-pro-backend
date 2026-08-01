@@ -180,6 +180,7 @@ describe("POST /v1/editais/:editalId/sync", () => {
     const enqueueSync = vi.fn(async () => undefined);
     const { server, sign } = await buildTestServer({
       findDriveSourceForEdital: async () => ({ id: "source-1" }),
+      findActiveConnection: async () => ({ id: "conn-1", refreshTokenEncryptedHex: "\\xdeadbeef" }),
       internalApi: { ...driveOptionsStub().internalApi, createSyncRun: async () => ({ id: "sync-xyz" }) },
       enqueueSync,
     });
@@ -193,7 +194,26 @@ describe("POST /v1/editais/:editalId/sync", () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toEqual({ syncRunId: "sync-xyz" });
     expect(enqueueSync).toHaveBeenCalledWith(
-      expect.objectContaining({ syncRunId: "sync-xyz", driveSourceId: "source-1" }),
+      expect.objectContaining({
+        syncRunId: "sync-xyz",
+        driveSourceId: "source-1",
+        refreshTokenEncryptedHex: "\\xdeadbeef",
+      }),
     );
+  });
+
+  it("responde 409 quando não há conexão Google ativa", async () => {
+    const { server, sign } = await buildTestServer({
+      findDriveSourceForEdital: async () => ({ id: "source-1" }),
+      findActiveConnection: async () => null,
+    });
+    const token = await sign({ sub: randomUUID() }, { issuer: ISSUER });
+    const response = await server.inject({
+      method: "POST",
+      url: `/v1/editais/${randomUUID()}/sync`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("no_active_connection");
   });
 });

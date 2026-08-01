@@ -72,12 +72,17 @@ const server = buildServer({
       const userClient = createUserScopedClient(env, accessToken);
       const { data } = await userClient
         .from("drive_connections")
-        .select("id")
+        .select("id, refresh_token_encrypted")
         .is("revoked_at", null)
         .order("connected_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      return data ? { id: data.id as string } : null;
+      return data
+        ? {
+            id: data.id as string,
+            refreshTokenEncryptedHex: data.refresh_token_encrypted as string,
+          }
+        : null;
     },
     findDriveSourceForEdital: async (editalId, accessToken) => {
       const userClient = createUserScopedClient(env, accessToken);
@@ -90,10 +95,10 @@ const server = buildServer({
         .maybeSingle();
       return data ? { id: data.id as string } : null;
     },
-    enqueueSync: async ({ syncRunId, driveSourceId, editalId }) => {
+    enqueueSync: async ({ syncRunId, driveSourceId, editalId, refreshTokenEncryptedHex }) => {
       await syncQueue.add(
         "sync",
-        { syncRunId, driveSourceId, editalId },
+        { syncRunId, driveSourceId, editalId, refreshTokenEncryptedHex },
         { jobId: syncRunId, ...driveSyncJobOptions(env.MAX_STAGE_ATTEMPTS) },
       );
     },

@@ -37,3 +37,7 @@ export function decryptRefreshToken(blob: Buffer, hexKey: string): string {
 export function bufferToPgBytea(buf: Buffer): string {
   return `\\x${buf.toString("hex")}`;
 }
+
+export function pgByteaToBuffer(hex: string): Buffer {
+  return Buffer.from(hex.replace(/^\\x/, ""), "hex");
+}

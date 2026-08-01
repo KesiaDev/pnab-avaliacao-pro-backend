@@ -54,6 +54,14 @@ export interface FinishSyncRunInput {
   errorMessage?: string | null;
 }
 
+export interface ExecuteSyncRunInput {
+  syncRunId: string;
+  // access_token do Google já renovado pelo Worker (curta duração, só
+  // drive.readonly) -- o app web nunca guarda client secret do Google, só
+  // usa o token pronto pra falar com a Drive API.
+  accessToken: string;
+}
+
 export class InternalApiError extends Error {
   constructor(
     message: string,
@@ -72,6 +80,7 @@ async function signedPost<T>(
   env: Pick<Env, "INTERNAL_API_BASE_URL" | "RAILWAY_INTERNAL_SECRET">,
   path: string,
   payload: unknown,
+  opts?: { timeoutMs?: number },
 ): Promise<T> {
   const body = JSON.stringify(payload);
   const timestamp = String(Date.now());
@@ -85,6 +94,7 @@ async function signedPost<T>(
       "x-internal-signature": signature,
     },
     body,
+    signal: opts?.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
   });
 
   const text = await res.text();
@@ -135,6 +145,18 @@ export function createInternalApiClient(
         stats: input.stats,
         errorMessage: input.errorMessage,
       }),
+    // A varredura recursiva de verdade (listar Drive, baixar, hash, gravar
+    // proponents/files/file_versions/sync_changes) roda do lado do app web,
+    // que é quem tem supabaseAdmin -- este backend só entrega o access_token
+    // já renovado e espera a chamada terminar (pode levar minutos numa pasta
+    // grande, por isso timeout maior que o padrão HMAC).
+    executeSyncRun: (input: ExecuteSyncRunInput) =>
+      signedPost<{ ok: true; stats: Record<string, unknown> }>(
+        env,
+        `/api/internal/sync-runs/${input.syncRunId}/execute`,
+        { accessToken: input.accessToken },
+        { timeoutMs: 15 * 60 * 1000 },
+      ),
   };
 }
 

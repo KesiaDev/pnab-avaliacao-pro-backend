@@ -57,6 +57,33 @@ export async function exchangeCodeForTokens(
   return res.json() as Promise<GoogleTokenResponse>;
 }
 
+// Renova o access_token de curta duração (~1h) a partir do refresh_token
+// persistido (cifrado) na conexão -- chamado pelo Worker antes de cada
+// varredura, já que o access_token obtido no callback OAuth nunca é
+// guardado.
+export async function refreshAccessToken(
+  env: Pick<Env, "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET">,
+  refreshToken: string,
+): Promise<GoogleTokenResponse> {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+    throw new Error("Credenciais do Google OAuth não configuradas.");
+  }
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Falha ao renovar token do Google: ${res.status} ${await res.text()}`);
+  }
+  return res.json() as Promise<GoogleTokenResponse>;
+}
+
 export async function fetchGoogleUserEmail(accessToken: string): Promise<string | null> {
   const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
     headers: { authorization: `Bearer ${accessToken}` },
