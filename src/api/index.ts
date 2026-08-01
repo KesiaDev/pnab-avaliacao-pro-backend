@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadEnv } from "../shared/env.js";
 import { createLogger } from "../observability/logger.js";
 import { createUserScopedClient } from "../integrations/supabase.js";
@@ -6,8 +7,32 @@ import { createRedisConnection } from "../integrations/redis.js";
 import { createSupabaseJwksResolver } from "../security/jwt.js";
 import { createApplicationQueue, stageJobOptions } from "../shared/applicationQueue.js";
 import { createDriveSyncQueue, driveSyncJobOptions } from "../shared/driveSyncQueue.js";
-import { PIPELINE_STAGES } from "../shared/queueNames.js";
+import { PIPELINE_STAGES, type PipelineStage, type StageState } from "../shared/queueNames.js";
+import type { JobSummary } from "./routes/jobs.js";
 import { buildServer } from "./server.js";
+
+// Monta o resumo de um job (stages ordenadas) reaproveitado por
+// findLatestJobForApplication/findJobById -- ambos só diferem em como acham
+// a linha de processing_jobs, o resto é idêntico.
+async function loadJobSummary(
+  userClient: SupabaseClient,
+  job: { id: string; edital_id: string; proponent_id: string },
+): Promise<JobSummary> {
+  const { data: stages } = await userClient
+    .from("job_stages")
+    .select("stage, order_index, state")
+    .eq("job_id", job.id);
+  return {
+    id: job.id,
+    editalId: job.edital_id,
+    applicationId: job.proponent_id,
+    stages: (stages ?? []).map((s) => ({
+      stage: s.stage as PipelineStage,
+      orderIndex: s.order_index as number,
+      state: s.state as StageState,
+    })),
+  };
+}
 
 const env = loadEnv();
 const logger = createLogger(env);
@@ -58,6 +83,56 @@ const server = buildServer({
         // BullMQ rejeita ":" no id do job ("Custom Id cannot contain :" --
         // é caractere reservado de namespace de chave no Redis).
         { jobId: `${jobId}-${firstStage}`, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
+      );
+    },
+    findLatestJobForApplication: async (applicationId, accessToken) => {
+      const userClient = createUserScopedClient(env, accessToken);
+      const { data: job } = await userClient
+        .from("processing_jobs")
+        .select("id, edital_id, proponent_id")
+        .eq("proponent_id", applicationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!job) return null;
+      return loadJobSummary(userClient, job);
+    },
+    findJobById: async (jobId, accessToken) => {
+      const userClient = createUserScopedClient(env, accessToken);
+      const { data: job } = await userClient
+        .from("processing_jobs")
+        .select("id, edital_id, proponent_id")
+        .eq("id", jobId)
+        .maybeSingle();
+      if (!job) return null;
+      return loadJobSummary(userClient, job);
+    },
+    cancelJob: async (jobId) => {
+      await internalApi.cancelJob(jobId);
+    },
+    resetStage: async ({ jobId, stage }) => {
+      await internalApi.resetStage({ jobId, stage });
+    },
+    // Um job "fantasma" (criado no banco, mas cujo enqueueFirstStage/
+    // enqueueStage falhou antes de chegar no Redis -- foi exatamente o bug
+    // do "Custom Id" com ":") não tem job correspondente no BullMQ ainda;
+    // um que já rodou e falhou/concluiu, tem. Usa Job.retry() nesse segundo
+    // caso (API nativa do BullMQ pra isso) em vez de tentar readicionar com
+    // o mesmo id, que teria semântica incerta com removeOnFail:false.
+    enqueueStage: async ({ jobId, editalId, applicationId, stage }) => {
+      const bullJobId = `${jobId}-${stage}`;
+      const existing = await queue.getJob(bullJobId);
+      if (existing) {
+        const state = await existing.getState();
+        if (state === "failed" || state === "completed") {
+          await existing.retry(state, { resetAttemptsMade: true });
+        }
+        return;
+      }
+      await queue.add(
+        stage,
+        { jobId, editalId, applicationId, stage },
+        { jobId: bullJobId, ...stageJobOptions(env.MAX_STAGE_ATTEMPTS) },
       );
     },
   },

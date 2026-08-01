@@ -219,6 +219,14 @@ export function createInternalApiClient(
           preserved: input.preserved,
         },
       ),
+    cancelJob: (jobId: string) =>
+      signedPost<{ ok: true }>(env, `/api/internal/jobs/${jobId}/cancel`, {}),
+    resetStage: (input: { jobId: string; stage: PipelineStage }) =>
+      signedPost<{ ok: true }>(
+        env,
+        `/api/internal/jobs/${input.jobId}/stages/${input.stage}/reset`,
+        {},
+      ),
     createDriveConnection: (input: CreateDriveConnectionInput) =>
       signedPost<{ id: string }>(env, "/api/internal/drive-connections", input),
     createDriveSource: (input: CreateDriveSourceInput) =>
