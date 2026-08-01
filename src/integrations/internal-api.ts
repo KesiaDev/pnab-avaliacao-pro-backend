@@ -43,7 +43,7 @@ export interface CreateDriveSourceInput {
 export interface CreateSyncRunInput {
   driveSourceId: string;
   editalId: string;
-  kind: "baseline" | "incremental";
+  kind: "baseline" | "sync";
   triggeredBy: string;
 }
 

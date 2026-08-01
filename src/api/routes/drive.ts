@@ -30,7 +30,9 @@ const startBodySchema = z.object({ editalId: z.string().uuid() });
 const driveSourceParamsSchema = z.object({ editalId: z.string().uuid() });
 const driveSourceBodySchema = z.object({ folderUrl: z.string().min(1) });
 const syncParamsSchema = z.object({ editalId: z.string().uuid() });
-const syncBodySchema = z.object({ kind: z.enum(["baseline", "incremental"]).default("incremental") });
+// "sync" (não "incremental") -- bate com o check constraint real de
+// sync_runs.kind no Supabase (ver supabase/migrations no repo web).
+const syncBodySchema = z.object({ kind: z.enum(["baseline", "sync"]).default("sync") });
 
 const driveRoutes: FastifyPluginAsync<DriveRoutesOptions> = async (fastify, opts) => {
   // ---------- Início do OAuth ----------
@@ -171,7 +173,7 @@ const driveRoutes: FastifyPluginAsync<DriveRoutesOptions> = async (fastify, opts
       const { id: syncRunId } = await opts.internalApi.createSyncRun({
         driveSourceId: source.id,
         editalId: params.data.editalId,
-        kind: body.success ? body.data.kind : "incremental",
+        kind: body.success ? body.data.kind : "sync",
         triggeredBy: request.user!.userId,
       });
 
