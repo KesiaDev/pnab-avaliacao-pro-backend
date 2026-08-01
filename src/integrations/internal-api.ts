@@ -115,6 +115,27 @@ export interface SaveDocumentPageImageInput {
   mimeType: string;
 }
 
+export interface DocumentPageForChunking {
+  fileId: string;
+  fileVersionId: string;
+  numeroPagina: number;
+  texto: string;
+}
+
+export interface ChunkInput {
+  paginaInicial: number;
+  paginaFinal: number;
+  ordem: number;
+  texto: string;
+  tokensEstimados: number;
+}
+
+export interface SaveDocumentChunksInput {
+  fileId: string;
+  fileVersionId: string;
+  chunks: ChunkInput[];
+}
+
 export class InternalApiError extends Error {
   constructor(
     message: string,
@@ -234,6 +255,14 @@ export function createInternalApiClient(
         imageBase64: input.imageBase64,
         mimeType: input.mimeType,
       }),
+    listDocumentPages: (proponentId: string) =>
+      signedPost<{ pages: DocumentPageForChunking[] }>(
+        env,
+        `/api/internal/proponents/${proponentId}/document-pages`,
+        {},
+      ),
+    saveDocumentChunks: (input: SaveDocumentChunksInput) =>
+      signedPost<{ ok: true; saved: number }>(env, "/api/internal/document-chunks", input),
   };
 }
 
