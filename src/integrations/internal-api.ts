@@ -103,6 +103,18 @@ export interface SaveDocumentPagesInput {
   pages: DocumentPageInput[];
 }
 
+export interface PageNeedingVision {
+  pageId: string;
+  fileId: string;
+  numeroPagina: number;
+}
+
+export interface SaveDocumentPageImageInput {
+  pageId: string;
+  imageBase64: string;
+  mimeType: string;
+}
+
 export class InternalApiError extends Error {
   constructor(
     message: string,
@@ -211,6 +223,17 @@ export function createInternalApiClient(
       ),
     saveDocumentPages: (input: SaveDocumentPagesInput) =>
       signedPost<{ ok: true; saved: number }>(env, "/api/internal/document-pages", input),
+    listPagesNeedingVision: (proponentId: string) =>
+      signedPost<{ pages: PageNeedingVision[] }>(
+        env,
+        `/api/internal/proponents/${proponentId}/pages-needing-vision`,
+        {},
+      ),
+    saveDocumentPageImage: (input: SaveDocumentPageImageInput) =>
+      signedPost<{ ok: true }>(env, `/api/internal/document-pages/${input.pageId}/image`, {
+        imageBase64: input.imageBase64,
+        mimeType: input.mimeType,
+      }),
   };
 }
 

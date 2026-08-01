@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,6 +26,38 @@ export async function extractPdfPagesText(pdfPath: string): Promise<string[]> {
   const pages = stdout.split("\f");
   if (pages.length > 0 && pages[pages.length - 1] === "") pages.pop();
   return pages;
+}
+
+// Renderiza só a página pedida (nunca o PDF inteiro, ver ADR-9) em PNG.
+// "-singlefile" é essencial aqui: sem ele, o nome do arquivo de saída do
+// pdftoppm leva um sufixo de número de página cuja largura de zero-padding
+// depende da faixa pedida (comportamento não-óbvio e não documentado o
+// bastante pra arriscar sem poder testar Poppler localmente) -- com
+// "-singlefile" o resultado é sempre exatamente "<prefix>.png", sem
+// ambiguidade.
+export async function renderPdfPageToPng(
+  pdfPath: string,
+  pageNumber: number,
+  dpi = 150,
+): Promise<Buffer> {
+  const outputPrefix = join(dirname(pdfPath), `page-${pageNumber}`);
+  await execFileAsync(
+    "pdftoppm",
+    [
+      "-png",
+      "-f",
+      String(pageNumber),
+      "-l",
+      String(pageNumber),
+      "-r",
+      String(dpi),
+      "-singlefile",
+      pdfPath,
+      outputPrefix,
+    ],
+    { maxBuffer: MAX_BUFFER },
+  );
+  return readFile(`${outputPrefix}.png`);
 }
 
 // Poppler só trabalha com arquivo em disco (não stream/buffer direto) --
