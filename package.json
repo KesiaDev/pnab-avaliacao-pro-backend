@@ -27,6 +27,7 @@
     "fastify-plugin": "^5.0.1",
     "ioredis": "^5.4.1",
     "jose": "^5.9.3",
+    "openai": "^7.3.0",
     "pino": "^9.4.0",
     "pino-pretty": "^11.2.2",
     "undici": "^8.9.0",

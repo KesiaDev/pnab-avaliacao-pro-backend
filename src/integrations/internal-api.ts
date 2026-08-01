@@ -136,6 +136,17 @@ export interface SaveDocumentChunksInput {
   chunks: ChunkInput[];
 }
 
+export interface ChunkNeedingEmbedding {
+  chunkId: string;
+  texto: string;
+}
+
+export interface SaveChunkEmbeddingInput {
+  chunkId: string;
+  embedding: number[];
+  modelo: string;
+}
+
 export class InternalApiError extends Error {
   constructor(
     message: string,
@@ -263,6 +274,17 @@ export function createInternalApiClient(
       ),
     saveDocumentChunks: (input: SaveDocumentChunksInput) =>
       signedPost<{ ok: true; saved: number }>(env, "/api/internal/document-chunks", input),
+    listChunksNeedingEmbedding: (proponentId: string) =>
+      signedPost<{ chunks: ChunkNeedingEmbedding[] }>(
+        env,
+        `/api/internal/proponents/${proponentId}/chunks-needing-embedding`,
+        {},
+      ),
+    saveChunkEmbedding: (input: SaveChunkEmbeddingInput) =>
+      signedPost<{ ok: true }>(env, `/api/internal/document-chunks/${input.chunkId}/embedding`, {
+        embedding: input.embedding,
+        modelo: input.modelo,
+      }),
   };
 }
 

@@ -50,16 +50,16 @@ describe("processStageJob", () => {
 
   it("reporta 'falhou' e relança a exceção pro BullMQ decidir o retry, sem enfileirar a próxima etapa", async () => {
     const deps = makeDeps();
-    const data = makeJobData({ stage: "indexacao" }); // não implementado nesta fase
+    const data = makeJobData({ stage: "evidencias_a_c" }); // não implementado nesta fase
 
     await expect(processStageJob(data, 1, deps)).rejects.toThrow(
-      'Stage "indexacao" ainda não implementado nesta fase.',
+      'Stage "evidencias_a_c" ainda não implementado nesta fase.',
     );
     expect(deps.reportStageState).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         state: "falhou",
-        errorMessage: expect.stringContaining("indexacao"),
+        errorMessage: expect.stringContaining("evidencias_a_c"),
       }),
     );
     expect(deps.enqueueNextStage).not.toHaveBeenCalled();

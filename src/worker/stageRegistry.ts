@@ -5,12 +5,13 @@ import { runDownloadStage } from "./stages/download.js";
 import { runExtracaoTextualStage } from "./stages/extracaoTextual.js";
 import { runAnaliseVisualSeletivaStage } from "./stages/analiseVisualSeletiva.js";
 import { runFragmentacaoStage } from "./stages/fragmentacao.js";
+import { runIndexacaoStage } from "./stages/indexacao.js";
 
 type StageHandler = (input: StageInput) => Promise<StageOutput>;
 
-// Os demais nomes (indexacao, evidencias_a_c, evidencias_d_g, bonus_h_j,
-// auditoria, parecer) já existem no contrato (PIPELINE_STAGES, igual ao
-// PROCESSING_STAGES do app web) pra Fase 6/7 não precisar renomear nada --
+// Os demais nomes (evidencias_a_c, evidencias_d_g, bonus_h_j, auditoria,
+// parecer) já existem no contrato (PIPELINE_STAGES, igual ao
+// PROCESSING_STAGES do app web) pra Fase 7 não precisar renomear nada --
 // até lá, chamar um deles é erro de programação, não um caso a tratar
 // silenciosamente.
 const registry: Partial<Record<PipelineStage, StageHandler>> = {
@@ -19,6 +20,7 @@ const registry: Partial<Record<PipelineStage, StageHandler>> = {
   extracao_textual: runExtracaoTextualStage,
   analise_visual_seletiva: runAnaliseVisualSeletivaStage,
   fragmentacao: runFragmentacaoStage,
+  indexacao: runIndexacaoStage,
 };
 
 export function getStageHandler(stage: PipelineStage): StageHandler {
