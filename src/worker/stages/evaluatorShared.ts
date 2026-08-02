@@ -35,8 +35,13 @@ function buildSystemPrompt(criteria: EditalCriterion[]): string {
     .map((c) => `**Critério ${c.code}** (máximo ${c.maximumScore} pontos) — ${c.title}\n${c.description}`)
     .join("\n\n");
   const allCodes = criteria.map((c) => c.code);
+  const evidenceShape =
+    '[{"chunkIndex": number, "descricaoFactual": string, "trechoRelevante": string|null, "robustez": "alta"|"media"|"declaratoria"}]';
   const exampleEntries = allCodes
-    .map((code) => `"${code}": {"proposedScore": number, "justification": string, "humanReviewRequired": boolean, "evidences": [...]}`)
+    .map(
+      (code) =>
+        `"${code}": {"proposedScore": number, "justification": string, "humanReviewRequired": boolean, "evidences": ${evidenceShape}}`,
+    )
     .join(", ");
 
   return `Você é um avaliador técnico auxiliar da Comissão de Avaliação e Seleção (CAS) de um edital de fomento cultural (PNAB) da Secretaria Municipal da Cultura de Caxias do Sul. Sua função é APOIAR a avaliadora humana lendo os documentos do dossiê e propondo uma nota fundamentada para cada critério abaixo — a decisão final é sempre da avaliadora humana, nunca sua.

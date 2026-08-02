@@ -179,6 +179,22 @@ describe("runEvaluatorStage", () => {
     });
   });
 
+  it("o prompt do sistema descreve o formato completo de evidences (regressão: exemplo vago já fez a IA devolver evidência inválida em produção)", async () => {
+    vi.mocked(openai.completeJSON).mockResolvedValue({
+      result: { criteria: { A: { proposedScore: 10, justification: "ok", humanReviewRequired: false, evidences: [] } } },
+      usage: { inputTokens: 10, outputTokens: 10 },
+    });
+    const input = makeInput();
+
+    await runEvaluatorStage(input, ["A"], "avaliador_teste");
+
+    const systemPrompt = vi.mocked(openai.completeJSON).mock.calls[0]?.[2] as string;
+    expect(systemPrompt).toContain('"chunkIndex": number');
+    expect(systemPrompt).toContain('"descricaoFactual": string');
+    expect(systemPrompt).toContain('"trechoRelevante": string|null');
+    expect(systemPrompt).toContain('"robustez": "alta"|"media"|"declaratoria"');
+  });
+
   it("não falha a etapa quando salvar o custo dá erro (best-effort)", async () => {
     vi.mocked(openai.completeJSON).mockResolvedValue({
       result: { criteria: { A: { proposedScore: 5, justification: "ok", humanReviewRequired: false, evidences: [] }, B: { proposedScore: 5, justification: "ok", humanReviewRequired: false, evidences: [] } } },
