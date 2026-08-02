@@ -4,7 +4,7 @@ import type { EditalCriterion, MatchedChunk } from "../src/integrations/internal
 
 vi.mock("../src/integrations/openai.js", () => ({
   createOpenAIClient: vi.fn(() => ({ fake: "client" })),
-  embedTexts: vi.fn(async () => [[0.1, 0.2]]),
+  embedTexts: vi.fn(async (_client: unknown, _model: unknown, texts: string[]) => texts.map(() => [0.1, 0.2])),
   completeJSON: vi.fn(),
   estimateCostUsd: vi.fn(() => 0.001),
 }));
@@ -141,6 +141,41 @@ describe("runEvaluatorStage", () => {
         expect.objectContaining({ criterion: "A", proposedScore: 10 }),
         expect.objectContaining({ criterion: "B", proposedScore: 0, humanReviewRequired: true }),
       ],
+    });
+  });
+
+  it("busca chunks separadamente por critério (não um embedding combinado) e deduplica o resultado", async () => {
+    const matchDocumentChunks = vi
+      .fn()
+      .mockResolvedValueOnce({
+        chunks: [
+          { chunkId: "chunk-1", fileId: "file-1", paginaInicial: 1, paginaFinal: 1, texto: "sobre qualidade", similarity: 0.9 },
+        ],
+      })
+      .mockResolvedValueOnce({
+        chunks: [
+          { chunkId: "chunk-1", fileId: "file-1", paginaInicial: 1, paginaFinal: 1, texto: "sobre qualidade", similarity: 0.9 },
+          { chunkId: "chunk-2", fileId: "file-2", paginaInicial: 3, paginaFinal: 3, texto: "sobre relevância cultural", similarity: 0.85 },
+        ],
+      });
+    vi.mocked(openai.completeJSON).mockResolvedValue({
+      result: {
+        criteria: {
+          A: { proposedScore: 18, justification: "ok", humanReviewRequired: false, evidences: [] },
+          B: { proposedScore: 12, justification: "ok", humanReviewRequired: false, evidences: [{ chunkIndex: 2, descricaoFactual: "fato B", trechoRelevante: "trecho B", robustez: "media" }] },
+        },
+      },
+      usage: { inputTokens: 100, outputTokens: 50 },
+    });
+    const input = makeInput({ matchDocumentChunks });
+
+    await runEvaluatorStage(input, ["A", "B"], "avaliador_teste");
+
+    // uma chamada de busca por critério, não uma única combinada
+    expect(matchDocumentChunks).toHaveBeenCalledTimes(2);
+    expect(input.internalApi.saveEvidence).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      evidences: [expect.objectContaining({ criterion: "B", fileId: "file-2", paginaInicial: 3 })],
     });
   });
 
