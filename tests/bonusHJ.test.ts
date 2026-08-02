@@ -4,7 +4,7 @@ import type { EditalCriterion, MatchedChunk } from "../src/integrations/internal
 
 vi.mock("../src/integrations/openai.js", () => ({
   createOpenAIClient: vi.fn(() => ({ fake: "client" })),
-  embedTexts: vi.fn(async () => [[0.1, 0.2]]),
+  embedTexts: vi.fn(async (_client: unknown, _model: unknown, texts: string[]) => texts.map(() => [0.1, 0.2])),
   completeJSON: vi.fn(),
   estimateCostUsd: vi.fn(() => 0.001),
 }));
@@ -40,6 +40,7 @@ function baseInternalApi() {
     matchDocumentChunks: vi.fn(async () => ({ chunks: makeChunks() })),
     saveCostEntry: vi.fn(async () => ({ ok: true as const })),
     saveTipoProponente: vi.fn(async () => ({ ok: true as const })),
+    saveProjectTitle: vi.fn(async () => ({ ok: true as const })),
     saveCriterionScores: vi.fn(async () => ({ ok: true as const, saved: 0 })),
     saveEvidence: vi.fn(async () => ({ ok: true as const, saved: 0 })),
     saveFlag: vi.fn(async () => ({ ok: true as const })),
@@ -225,5 +226,74 @@ describe("runBonusHJStage", () => {
       proponentId: "proponent-1",
       flag: expect.objectContaining({ tipo: "ciclo1_exata" }),
     });
+  });
+
+  it("busca chunks separadamente pra fatos e pra título do projeto, e deduplica", async () => {
+    const matchDocumentChunks = vi
+      .fn()
+      .mockResolvedValueOnce({ chunks: [makeChunks()[0]] })
+      .mockResolvedValueOnce({ chunks: makeChunks() });
+    mockFacts({
+      tipoProponente: "pessoa_fisica",
+      tipoProponenteEvidencia: null,
+      acoesBairros: [],
+      autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
+      tituloProjeto: null,
+    });
+    const input = makeInput({ matchDocumentChunks });
+
+    await runBonusHJStage(input);
+
+    expect(matchDocumentChunks).toHaveBeenCalledTimes(2);
+  });
+
+  it("salva o título do projeto extraído do formulário de inscrição", async () => {
+    mockFacts({
+      tipoProponente: "pessoa_fisica",
+      tipoProponenteEvidencia: null,
+      acoesBairros: [],
+      autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
+      tituloProjeto: "Revista Le Musée - 12ª edição",
+    });
+    const input = makeInput();
+
+    await runBonusHJStage(input);
+
+    expect(input.internalApi.saveProjectTitle).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      titulo: "Revista Le Musée - 12ª edição",
+    });
+  });
+
+  it("não salva título quando o agente não encontra um campo explícito", async () => {
+    mockFacts({
+      tipoProponente: "pessoa_fisica",
+      tipoProponenteEvidencia: null,
+      acoesBairros: [],
+      autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
+      tituloProjeto: null,
+    });
+    const input = makeInput();
+
+    await runBonusHJStage(input);
+
+    expect(input.internalApi.saveProjectTitle).not.toHaveBeenCalled();
+  });
+
+  it("não falha a etapa quando salvar o título dá erro (best-effort)", async () => {
+    mockFacts({
+      tipoProponente: "pessoa_fisica",
+      tipoProponenteEvidencia: null,
+      acoesBairros: [],
+      autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
+      tituloProjeto: "Revista Le Musée",
+    });
+    const input = makeInput({
+      saveProjectTitle: vi.fn(async () => {
+        throw new Error("falha de rede");
+      }),
+    });
+
+    await expect(runBonusHJStage(input)).resolves.toMatchObject({ ok: true });
   });
 });

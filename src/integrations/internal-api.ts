@@ -391,6 +391,10 @@ export function createInternalApiClient(
       signedPost<{ ok: true }>(env, `/api/internal/proponents/${input.proponentId}/tipo`, {
         tipoProponente: input.tipoProponente,
       }),
+    saveProjectTitle: (input: { proponentId: string; titulo: string }) =>
+      signedPost<{ ok: true }>(env, `/api/internal/proponents/${input.proponentId}/project-title`, {
+        titulo: input.titulo,
+      }),
     saveEvidence: (input: { proponentId: string; evidences: EvidenceInput[] }) =>
       signedPost<{ ok: true; saved: number }>(
         env,

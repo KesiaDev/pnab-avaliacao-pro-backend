@@ -4,7 +4,8 @@ import { createOpenAIClient, embedTexts, completeJSON, estimateCostUsd } from ".
 import type { CriterionScoreInput, EvidenceInput, MatchedChunk } from "../../integrations/internal-api.js";
 
 const AGENT_NAME = "bonus_h_j";
-const MATCH_COUNT = 16;
+const MATCH_COUNT_FACTS = 16;
+const MATCH_COUNT_TITLE = 8;
 
 // Item 4.8.1.2 do Edital 120/2026: bairros que NÃO se enquadram como área
 // periférica pra fins do bônus territorial (H) -- lista oficial do texto do
@@ -37,6 +38,7 @@ interface ExtractedFacts {
     descricao: string | null;
     chunkIndex: number | null;
   };
+  tituloProjeto: string | null;
 }
 
 const SYSTEM_PROMPT = `Você é um extrator de fatos auxiliar da Comissão de Avaliação e Seleção (CAS) de um edital de fomento cultural (PNAB) da Secretaria Municipal da Cultura de Caxias do Sul. Sua função é EXTRAIR fatos objetivos do dossiê pra apoiar o cálculo de pontos bônus -- você NUNCA decide pontuação, só extrai o que está escrito nos trechos numerados fornecidos.
@@ -52,13 +54,15 @@ Extraia, com base EXCLUSIVA nos trechos fornecidos:
    - Se pessoa jurídica ou coletivo/grupo: procure declaração de que a composição é majoritariamente de mulheres ou pessoas LGBTQIAPN+, OU de que o quadro/equipe é majoritariamente composto por pessoas negras, indígenas ou pessoas com deficiência.
    Reporte se encontrou essa autodeclaração explícita e transcreva o trecho.
 
+4. TÍTULO DO PROJETO: procure um campo explícito de título/nome do projeto no formulário de inscrição (ex.: "Título do Projeto", "Nome do Projeto"), normalmente logo no início do formulário, antes da descrição. Transcreva o título exatamente como está escrito. Se não houver um campo de título explícito e claramente identificável, responda null -- nunca crie um título a partir da descrição, dos objetivos ou de qualquer outro conteúdo do projeto.
+
 Regras:
 - Nunca infira tipo de agente, gênero, raça/etnia ou deficiência a partir de nome, foto ou aparência -- só a partir de autodeclaração explícita em texto.
 - Não julgue se um bairro é ou não periférico -- só extraia o NOME do bairro exatamente como está escrito. Essa decisão é feita depois, fora desta extração.
 - Se a informação não estiver clara ou não existir no texto, deixe o campo null/vazio/indeterminado em vez de adivinhar.
 
 Responda em JSON estrito, exatamente neste formato:
-{"tipoProponente": "pessoa_fisica"|"pessoa_juridica_ou_coletivo"|"indeterminado", "tipoProponenteEvidencia": {"chunkIndex": number, "trecho": string} | null, "acoesBairros": [{"bairro": string, "chunkIndex": number, "trecho": string}], "autodeclaracaoAcaoAfirmativa": {"aplicavel": boolean, "descricao": string | null, "chunkIndex": number | null}}`;
+{"tipoProponente": "pessoa_fisica"|"pessoa_juridica_ou_coletivo"|"indeterminado", "tipoProponenteEvidencia": {"chunkIndex": number, "trecho": string} | null, "acoesBairros": [{"bairro": string, "chunkIndex": number, "trecho": string}], "autodeclaracaoAcaoAfirmativa": {"aplicavel": boolean, "descricao": string | null, "chunkIndex": number | null}, "tituloProjeto": string | null}`;
 
 function evidenceFrom(
   criterion: string,
@@ -91,16 +95,37 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
     throw new Error("Nenhum dos critérios H/I/J encontrado pro edital.");
   }
 
-  const queryText =
+  // Consultas separadas (não uma única combinada) -- um embedding médio de
+  // tópicos tão diferentes (tipo de agente/bairro/ação afirmativa vs.
+  // título do projeto) tende a diluir a recuperação do tópico menos
+  // dominante, o mesmo problema já corrigido em evaluatorShared.ts.
+  const factsQueryText =
     "Tipo de agente cultural pessoa física ou jurídica ou coletivo. Bairro ou território onde a ação cultural será realizada. Autodeclaração de gênero, mulher, pessoa LGBTQIAPN+. Composição racial do quadro societário, pessoas negras, indígenas, pessoa com deficiência.";
-  const [queryEmbedding] = await embedTexts(client, env.OPENAI_EMBEDDING_MODEL, [queryText]);
-  if (!queryEmbedding) throw new Error("Falha ao gerar embedding de consulta.");
+  const titleQueryText =
+    "Título ou nome do projeto cultural, conforme informado no campo de título do formulário de inscrição.";
+  const [factsEmbedding, titleEmbedding] = await embedTexts(client, env.OPENAI_EMBEDDING_MODEL, [
+    factsQueryText,
+    titleQueryText,
+  ]);
+  if (!factsEmbedding || !titleEmbedding) throw new Error("Falha ao gerar embedding de consulta.");
 
-  const { chunks } = await input.internalApi.matchDocumentChunks({
-    proponentId: input.applicationId,
-    queryEmbedding,
-    matchCount: MATCH_COUNT,
-  });
+  const [factsResult, titleResult] = await Promise.all([
+    input.internalApi.matchDocumentChunks({
+      proponentId: input.applicationId,
+      queryEmbedding: factsEmbedding,
+      matchCount: MATCH_COUNT_FACTS,
+    }),
+    input.internalApi.matchDocumentChunks({
+      proponentId: input.applicationId,
+      queryEmbedding: titleEmbedding,
+      matchCount: MATCH_COUNT_TITLE,
+    }),
+  ]);
+  const chunksById = new Map<string, MatchedChunk>();
+  for (const chunk of [...factsResult.chunks, ...titleResult.chunks]) {
+    if (!chunksById.has(chunk.chunkId)) chunksById.set(chunk.chunkId, chunk);
+  }
+  const chunks = Array.from(chunksById.values());
   if (chunks.length === 0) {
     throw new Error(
       "Nenhum trecho de documento indexado pra este proponente -- rode extracao_textual/fragmentacao/indexacao antes.",
@@ -136,6 +161,12 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
     await input.internalApi
       .saveTipoProponente({ proponentId: input.applicationId, tipoProponente: facts.tipoProponente })
       .catch((err) => input.logger.warn({ err }, "save_tipo_proponente_failed"));
+  }
+
+  if (facts.tituloProjeto && facts.tituloProjeto.trim().length > 0) {
+    await input.internalApi
+      .saveProjectTitle({ proponentId: input.applicationId, titulo: facts.tituloProjeto.trim() })
+      .catch((err) => input.logger.warn({ err }, "save_project_title_failed"));
   }
 
   const scores: CriterionScoreInput[] = [];
