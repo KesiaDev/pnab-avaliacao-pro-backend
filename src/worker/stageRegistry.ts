@@ -6,14 +6,17 @@ import { runExtracaoTextualStage } from "./stages/extracaoTextual.js";
 import { runAnaliseVisualSeletivaStage } from "./stages/analiseVisualSeletiva.js";
 import { runFragmentacaoStage } from "./stages/fragmentacao.js";
 import { runIndexacaoStage } from "./stages/indexacao.js";
+import { runEvidenciasACStage } from "./stages/evidenciasAC.js";
+import { runEvidenciasDGStage } from "./stages/evidenciasDG.js";
+import { runBonusHJStage } from "./stages/bonusHJ.js";
+import { runAuditoriaStage } from "./stages/auditoria.js";
+import { runParecerStage } from "./stages/parecer.js";
 
 type StageHandler = (input: StageInput) => Promise<StageOutput>;
 
-// Os demais nomes (evidencias_a_c, evidencias_d_g, bonus_h_j, auditoria,
-// parecer) já existem no contrato (PIPELINE_STAGES, igual ao
-// PROCESSING_STAGES do app web) pra Fase 7 não precisar renomear nada --
-// até lá, chamar um deles é erro de programação, não um caso a tratar
-// silenciosamente.
+// Todas as etapas do pipeline (PIPELINE_STAGES, igual ao PROCESSING_STAGES
+// do app web) estão implementadas -- ver Fase 6 (inventario..indexacao) e
+// Fase 7 (evidencias_a_c..parecer).
 const registry: Partial<Record<PipelineStage, StageHandler>> = {
   inventario: runInventarioStage,
   download: runDownloadStage,
@@ -21,6 +24,11 @@ const registry: Partial<Record<PipelineStage, StageHandler>> = {
   analise_visual_seletiva: runAnaliseVisualSeletivaStage,
   fragmentacao: runFragmentacaoStage,
   indexacao: runIndexacaoStage,
+  evidencias_a_c: runEvidenciasACStage,
+  evidencias_d_g: runEvidenciasDGStage,
+  bonus_h_j: runBonusHJStage,
+  auditoria: runAuditoriaStage,
+  parecer: runParecerStage,
 };
 
 export function getStageHandler(stage: PipelineStage): StageHandler {

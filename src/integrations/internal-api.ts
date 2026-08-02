@@ -147,6 +147,77 @@ export interface SaveChunkEmbeddingInput {
   modelo: string;
 }
 
+export interface EditalCriterion {
+  code: string;
+  title: string;
+  description: string;
+  maximumScore: number;
+  eliminatory: boolean;
+  bonus: boolean;
+}
+
+export interface MatchedChunk {
+  chunkId: string;
+  fileId: string;
+  paginaInicial: number;
+  paginaFinal: number;
+  texto: string;
+  similarity: number;
+}
+
+export type EvidenceRobustness = "alta" | "media" | "declaratoria";
+
+export interface EvidenceInput {
+  criterion: string;
+  fileId: string | null;
+  paginaInicial: number | null;
+  paginaFinal: number | null;
+  descricaoFactual: string;
+  trechoRelevante: string | null;
+  robustez: EvidenceRobustness;
+  criadoPorAgente: string;
+}
+
+export interface CriterionScoreInput {
+  criterion: string;
+  proposedScore: number;
+  appliedBand: string | null;
+  justification: string;
+  humanReviewRequired: boolean;
+}
+
+export interface ProponentInfo {
+  id: string;
+  nomeCanonico: string;
+  categoria: string | null;
+  tipoProponente: "pessoa_fisica" | "pessoa_juridica_ou_coletivo" | null;
+  ciclo1Alerta: "exata" | "provavel" | null;
+}
+
+export interface Cycle1MatchResult {
+  match: "exata" | "provavel" | "sem_correspondencia";
+  awardeeName: string | null;
+  totalAwardeesOnFile: number;
+}
+
+export interface FlagInput {
+  tipo: "ciclo1_exata" | "ciclo1_provavel" | "conteudo_discriminatorio" | "divergencia_documental" | "outro";
+  descricao: string;
+  fileId?: string | null;
+  pagina?: number | null;
+  criadoPorAgente: string;
+}
+
+export interface CostEntryInput {
+  editalId: string;
+  proponentId: string | null;
+  stage: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cost: number;
+}
+
 export class InternalApiError extends Error {
   constructor(
     message: string,
@@ -293,6 +364,80 @@ export function createInternalApiClient(
         embedding: input.embedding,
         modelo: input.modelo,
       }),
+    getEditalCriteria: (editalId: string, codes?: string[]) =>
+      signedPost<{ criteria: EditalCriterion[] }>(env, `/api/internal/editais/${editalId}/criteria`, {
+        codes,
+      }),
+    matchDocumentChunks: (input: {
+      proponentId: string;
+      queryEmbedding: number[];
+      matchCount?: number;
+    }) =>
+      signedPost<{ chunks: MatchedChunk[] }>(
+        env,
+        `/api/internal/proponents/${input.proponentId}/match-chunks`,
+        { queryEmbedding: input.queryEmbedding, matchCount: input.matchCount },
+      ),
+    getProponentInfo: (proponentId: string) =>
+      signedPost<{ proponent: ProponentInfo }>(
+        env,
+        `/api/internal/proponents/${proponentId}/info`,
+        {},
+      ),
+    saveTipoProponente: (input: {
+      proponentId: string;
+      tipoProponente: "pessoa_fisica" | "pessoa_juridica_ou_coletivo";
+    }) =>
+      signedPost<{ ok: true }>(env, `/api/internal/proponents/${input.proponentId}/tipo`, {
+        tipoProponente: input.tipoProponente,
+      }),
+    saveEvidence: (input: { proponentId: string; evidences: EvidenceInput[] }) =>
+      signedPost<{ ok: true; saved: number }>(
+        env,
+        `/api/internal/proponents/${input.proponentId}/evidence`,
+        { evidences: input.evidences },
+      ),
+    saveCriterionScores: (input: { proponentId: string; scores: CriterionScoreInput[] }) =>
+      signedPost<{ ok: true; saved: number }>(
+        env,
+        `/api/internal/proponents/${input.proponentId}/criterion-scores`,
+        { scores: input.scores },
+      ),
+    saveFlag: (input: { proponentId: string; flag: FlagInput }) =>
+      signedPost<{ ok: true }>(env, `/api/internal/proponents/${input.proponentId}/flags`, {
+        ...input.flag,
+      }),
+    saveCostEntry: (input: CostEntryInput) =>
+      signedPost<{ ok: true }>(env, "/api/internal/cost-entries", input),
+    getEvaluationContext: (proponentId: string) =>
+      signedPost<{
+        proponentNome: string;
+        criterionScores: {
+          criterion: string;
+          maxScore: number;
+          proposedScore: number | null;
+          approvedScore: number | null;
+          appliedBand: string | null;
+          justification: string | null;
+        }[];
+        evidenceCountByCriterion: Record<string, number>;
+        mandatorySubtotal: number;
+        bonusSubtotal: number;
+        individualTotal: number;
+        zeroInMandatoryCriterion: boolean;
+      }>(env, `/api/internal/proponents/${proponentId}/evaluation-context`, {}),
+    checkCycle1Match: (proponentId: string) =>
+      signedPost<Cycle1MatchResult>(
+        env,
+        `/api/internal/proponents/${proponentId}/cycle1-match`,
+        {},
+      ),
+    saveParecer: (input: { proponentId: string; texto: string }) =>
+      signedPost<{ ok: true; versao: number }>(
+        env,
+        `/api/internal/proponents/${input.proponentId}/parecer`,
+        { texto: input.texto },
+      ),
   };
 }
 

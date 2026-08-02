@@ -17,3 +17,66 @@ export async function embedTexts(
   const res = await client.embeddings.create({ model, input: texts });
   return res.data.map((d) => d.embedding);
 }
+
+export interface JsonCompletionUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface JsonCompletionResult<T> {
+  result: T;
+  usage: JsonCompletionUsage;
+}
+
+// Modo JSON nativo da API da OpenAI (response_format json_object) -- mais
+// confiável que validar/reenviar em texto livre como o gateway legado
+// fazia, já que o modelo é forçado a produzir JSON sintaticamente válido.
+export async function completeJSON<T>(
+  client: OpenAI,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<JsonCompletionResult<T>> {
+  const res = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    response_format: { type: "json_object" },
+  });
+  const content = res.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error("Resposta vazia da OpenAI.");
+  }
+  let result: T;
+  try {
+    result = JSON.parse(content) as T;
+  } catch {
+    throw new Error("Resposta da OpenAI não é um JSON válido.");
+  }
+  return {
+    result,
+    usage: {
+      inputTokens: res.usage?.prompt_tokens ?? 0,
+      outputTokens: res.usage?.completion_tokens ?? 0,
+    },
+  };
+}
+
+// Preços aproximados (USD por 1M tokens) -- ADR-10 pede custo estimado
+// registrado a cada chamada, não centavo exato. Ajustar conforme tabela de
+// preço real vigente quando disponível; modelo desconhecido custa 0 (nunca
+// quebra a chamada por falta de preço cadastrado).
+const PRICE_PER_MILLION_TOKENS_USD: Record<string, { input: number; output: number }> = {
+  "gpt-5.4-nano": { input: 0.05, output: 0.4 },
+  "gpt-5.4-mini": { input: 0.25, output: 2 },
+  "gpt-5.4": { input: 2.5, output: 10 },
+  "text-embedding-3-small": { input: 0.02, output: 0 },
+};
+
+export function estimateCostUsd(model: string, usage: JsonCompletionUsage): number {
+  const price = PRICE_PER_MILLION_TOKENS_USD[model];
+  if (!price) return 0;
+  return (usage.inputTokens * price.input + usage.outputTokens * price.output) / 1_000_000;
+}

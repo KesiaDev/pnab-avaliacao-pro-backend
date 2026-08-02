@@ -1,7 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
-import { processStageJob, getNextStage } from "../src/worker/processStageJob.js";
 import { createLogger } from "../src/observability/logger.js";
 import type { ApplicationStageJobData } from "../src/shared/applicationQueue.js";
+
+vi.mock("../src/worker/stageRegistry.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/worker/stageRegistry.js")>();
+  return {
+    ...actual,
+    getStageHandler: vi.fn(actual.getStageHandler),
+  };
+});
+
+const { getStageHandler } = await import("../src/worker/stageRegistry.js");
+const { processStageJob, getNextStage } = await import("../src/worker/processStageJob.js");
 
 function makeJobData(overrides: Partial<ApplicationStageJobData> = {}): ApplicationStageJobData {
   return {
@@ -17,9 +27,8 @@ function makeDeps() {
   return {
     reportStageState: vi.fn(async () => undefined),
     enqueueNextStage: vi.fn(async () => undefined),
-    // Stub mínimo -- só os stages "download"/"extracao_textual" chamam
-    // métodos do internalApi de verdade, e nenhum teste aqui exercita eles
-    // (usa "inventario", no-op, e "fragmentacao", ainda não implementado).
+    // Stub mínimo -- "inventario" é no-op, o teste de falha troca o handler
+    // pra um mock que lança de propósito (ver getStageHandler acima).
     internalApi: {} as never,
     logger: createLogger({ NODE_ENV: "test" }),
   };
@@ -49,8 +58,11 @@ describe("processStageJob", () => {
   });
 
   it("reporta 'falhou' e relança a exceção pro BullMQ decidir o retry, sem enfileirar a próxima etapa", async () => {
+    vi.mocked(getStageHandler).mockImplementationOnce(() => {
+      throw new Error('Stage "evidencias_a_c" ainda não implementado nesta fase.');
+    });
     const deps = makeDeps();
-    const data = makeJobData({ stage: "evidencias_a_c" }); // não implementado nesta fase
+    const data = makeJobData({ stage: "evidencias_a_c" });
 
     await expect(processStageJob(data, 1, deps)).rejects.toThrow(
       'Stage "evidencias_a_c" ainda não implementado nesta fase.',
