@@ -14,6 +14,7 @@ export const PIPELINE_STAGES = [
   "indexacao",
   "evidencias_a_c",
   "evidencias_d_g",
+  "auditoria_orcamentaria",
   "bonus_h_j",
   "auditoria",
   "parecer",

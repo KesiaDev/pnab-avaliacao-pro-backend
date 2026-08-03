@@ -8,6 +8,7 @@ import { runFragmentacaoStage } from "./stages/fragmentacao.js";
 import { runIndexacaoStage } from "./stages/indexacao.js";
 import { runEvidenciasACStage } from "./stages/evidenciasAC.js";
 import { runEvidenciasDGStage } from "./stages/evidenciasDG.js";
+import { runAuditoriaOrcamentariaStage } from "./stages/auditoriaOrcamentaria.js";
 import { runBonusHJStage } from "./stages/bonusHJ.js";
 import { runAuditoriaStage } from "./stages/auditoria.js";
 import { runParecerStage } from "./stages/parecer.js";
@@ -26,6 +27,7 @@ const registry: Partial<Record<PipelineStage, StageHandler>> = {
   indexacao: runIndexacaoStage,
   evidencias_a_c: runEvidenciasACStage,
   evidencias_d_g: runEvidenciasDGStage,
+  auditoria_orcamentaria: runAuditoriaOrcamentariaStage,
   bonus_h_j: runBonusHJStage,
   auditoria: runAuditoriaStage,
   parecer: runParecerStage,
