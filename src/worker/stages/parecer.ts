@@ -48,11 +48,16 @@ export async function runParecerStage(input: StageInput): Promise<StageOutput> {
   const resumo = {
     proponente: context.proponentNome,
     zeroInMandatoryCriterion: context.zeroInMandatoryCriterion,
+    // A minuta é redigida sobre a decisão FINAL da avaliadora
+    // (approved_score), nunca sobre a proposta crua do agente -- senão uma
+    // correção manual (ADR-6, revisão humana soberana) nunca apareceria no
+    // texto do parecer, nem gerando de novo. Cai pra proposedScore só se o
+    // critério ainda não tiver sido revisado (rascunho antes da aprovação).
     criterios: context.criterionScores.map((cs) => ({
       criterio: cs.criterion,
       titulo: titleByCode.get(cs.criterion) ?? cs.criterion,
       max: cs.maxScore,
-      notaProposta: cs.proposedScore,
+      notaAtribuida: cs.approvedScore ?? cs.proposedScore,
       faixaAplicada: cs.appliedBand,
       justificativa: cs.justification,
       semEvidencia: (context.evidenceCountByCriterion[cs.criterion] ?? 0) === 0,

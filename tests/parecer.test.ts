@@ -71,6 +71,39 @@ describe("runParecerStage", () => {
     expect(result).toEqual({ ok: true, details: { versao: 1 } });
   });
 
+  it("usa a nota aprovada pela avaliadora no resumo enviado à IA, não a nota proposta pelo agente (regressão: correção manual nunca aparecia na minuta)", async () => {
+    vi.mocked(openai.completeJSON).mockResolvedValue({
+      result: { parecer: "texto qualquer" },
+      usage: { inputTokens: 10, outputTokens: 10 },
+    });
+    const { input } = makeInput({
+      getEvaluationContext: vi.fn(async () => ({
+        proponentNome: "Proponente Teste",
+        criterionScores: [
+          {
+            criterion: "J",
+            maxScore: 10,
+            proposedScore: 10,
+            approvedScore: 0,
+            appliedBand: null,
+            justification: "corrigido manualmente pela avaliadora",
+          },
+        ],
+        evidenceCountByCriterion: { J: 0 },
+        mandatorySubtotal: 0,
+        bonusSubtotal: 0,
+        individualTotal: 0,
+        zeroInMandatoryCriterion: false,
+      })),
+    });
+
+    await runParecerStage(input);
+
+    const userPrompt = vi.mocked(openai.completeJSON).mock.calls[0]?.[3] as string;
+    const resumo = JSON.parse(userPrompt.split("RESUMO DA AVALIAÇÃO (JSON):\n\n")[1] as string);
+    expect(resumo.criterios[0].notaAtribuida).toBe(0);
+  });
+
   it("lança erro quando a IA devolve parecer vazio", async () => {
     vi.mocked(openai.completeJSON).mockResolvedValue({
       result: { parecer: "" },
