@@ -334,7 +334,14 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
 
   const anyHumanReview = scores.some((s) => s.humanReviewRequired);
   input.logger.info(
-    { tipoProponente: facts.tipoProponente, cycle1: cycle1.match, anyHumanReview },
+    {
+      tipoProponente: facts.tipoProponente,
+      autodeclaracaoCiclo1: facts.autodeclaracaoCiclo1,
+      cycle1: cycle1.match,
+      cycle1AwardeeName: cycle1.awardeeName,
+      jScore: scores.find((s) => s.criterion === "J")?.proposedScore,
+      anyHumanReview,
+    },
     "bonus_h_j_completed",
   );
 
