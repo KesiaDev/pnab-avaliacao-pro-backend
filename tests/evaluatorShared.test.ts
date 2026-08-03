@@ -211,6 +211,30 @@ describe("runEvaluatorStage", () => {
     });
   });
 
+  it("força revisão humana quando a justificativa contém caracteres de outro alfabeto, sem derrubar a etapa inteira", async () => {
+    vi.mocked(openai.completeJSON).mockResolvedValue({
+      result: {
+        criteria: {
+          A: { proposedScore: 18, justification: "contribuíram para sua गठनação.", humanReviewRequired: false, evidences: [] },
+          B: { proposedScore: 15, justification: "justificativa normal", humanReviewRequired: false, evidences: [] },
+        },
+      },
+      usage: { inputTokens: 10, outputTokens: 10 },
+    });
+    const input = makeInput();
+
+    const result = await runEvaluatorStage(input, ["A", "B"], "avaliador_teste");
+
+    expect(input.internalApi.saveCriterionScores).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      scores: [
+        expect.objectContaining({ criterion: "A", humanReviewRequired: true }),
+        expect.objectContaining({ criterion: "B", humanReviewRequired: false }),
+      ],
+    });
+    expect(result.ok).toBe(true);
+  });
+
   it("o prompt do sistema descreve o formato completo de evidences (regressão: exemplo vago já fez a IA devolver evidência inválida em produção)", async () => {
     vi.mocked(openai.completeJSON).mockResolvedValue({
       result: { criteria: { A: { proposedScore: 10, justification: "ok", humanReviewRequired: false, evidences: [] } } },

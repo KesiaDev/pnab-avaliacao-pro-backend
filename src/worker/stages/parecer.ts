@@ -1,6 +1,7 @@
 import type { StageInput, StageOutput } from "./types.js";
 import { loadEnv } from "../../shared/env.js";
 import { createOpenAIClient, completeJSON, estimateCostUsd } from "../../integrations/openai.js";
+import { containsUnexpectedScript } from "../../shared/textValidation.js";
 
 const AGENT_NAME = "agente_parecer";
 
@@ -91,6 +92,15 @@ export async function runParecerStage(input: StageInput): Promise<StageOutput> {
 
   if (!result.parecer || result.parecer.trim().length === 0) {
     throw new Error("O agente não retornou texto de parecer.");
+  }
+  // Defeito raro e estocástico do modelo: às vezes "vaza" um trecho em
+  // outro alfabeto (ex.: devanágari) no meio do texto em português. Nunca
+  // salva um parecer assim -- o throw aciona o retry do BullMQ, que na
+  // prática já resolve (a próxima geração normalmente sai limpa).
+  if (containsUnexpectedScript(result.parecer)) {
+    throw new Error(
+      "O parecer gerado contém caracteres inesperados (fora do alfabeto latino/português) -- descartado antes de salvar. Tente gerar novamente.",
+    );
   }
 
   const { versao } = await input.internalApi.saveParecer({

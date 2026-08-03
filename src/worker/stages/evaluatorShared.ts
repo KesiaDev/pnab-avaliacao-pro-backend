@@ -8,6 +8,7 @@ import type {
   CriterionScoreInput,
   MatchedChunk,
 } from "../../integrations/internal-api.js";
+import { containsUnexpectedScript } from "../../shared/textValidation.js";
 
 // Quantos chunks (trechos) trazer por chamada -- cobre os critérios do
 // grupo (3-4 letras) sem estourar o contexto/custo (ADR-9: nunca manda o
@@ -178,13 +179,19 @@ export async function runEvaluatorStage(
     // clamp corrige, mas SEMPRE força revisão humana quando muda o valor
     // (nunca aceita silenciosamente uma nota fora do esperado).
     const clamped = Math.max(0, Math.min(criterionDef.maximumScore, Math.round(raw.proposedScore)));
-    const humanReviewRequired = raw.humanReviewRequired || clamped !== raw.proposedScore;
+    const justification = resolveCitations(raw.justification, chunks);
+    // Defeito raro e estocástico do modelo: às vezes "vaza" um trecho em
+    // outro alfabeto no meio do texto. Diferente do parecer (onde o throw
+    // força regenerar tudo), aqui um único critério não deve derrubar a
+    // etapa inteira -- só força revisão humana pra essa linha específica.
+    const humanReviewRequired =
+      raw.humanReviewRequired || clamped !== raw.proposedScore || containsUnexpectedScript(justification);
 
     scores.push({
       criterion: criterionDef.code,
       proposedScore: clamped,
       appliedBand: null,
-      justification: resolveCitations(raw.justification, chunks),
+      justification,
       humanReviewRequired,
     });
 

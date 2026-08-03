@@ -104,6 +104,17 @@ describe("runParecerStage", () => {
     expect(resumo.criterios[0].notaAtribuida).toBe(0);
   });
 
+  it("lança erro e nunca salva quando o parecer contém caracteres de outro alfabeto (defeito estocástico do modelo)", async () => {
+    vi.mocked(openai.completeJSON).mockResolvedValue({
+      result: { parecer: "Atribuí 18 pontos... contribuíram para sua गठनação." },
+      usage: { inputTokens: 10, outputTokens: 10 },
+    });
+    const { input, saveParecer } = makeInput();
+
+    await expect(runParecerStage(input)).rejects.toThrow("caracteres inesperados");
+    expect(saveParecer).not.toHaveBeenCalled();
+  });
+
   it("lança erro quando a IA devolve parecer vazio", async () => {
     vi.mocked(openai.completeJSON).mockResolvedValue({
       result: { parecer: "" },
