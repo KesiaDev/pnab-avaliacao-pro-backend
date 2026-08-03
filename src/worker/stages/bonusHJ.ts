@@ -6,6 +6,7 @@ import type { CriterionScoreInput, EvidenceInput, MatchedChunk } from "../../int
 const AGENT_NAME = "bonus_h_j";
 const MATCH_COUNT_FACTS = 16;
 const MATCH_COUNT_TITLE = 8;
+const MATCH_COUNT_CICLO1 = 8;
 
 // Item 4.8.1.2 do Edital 120/2026: bairros que NÃO se enquadram como área
 // periférica pra fins do bônus territorial (H) -- lista oficial do texto do
@@ -39,6 +40,7 @@ interface ExtractedFacts {
     chunkIndex: number | null;
   };
   tituloProjeto: string | null;
+  autodeclaracaoCiclo1: "sim" | "nao" | "nao_encontrado";
 }
 
 const SYSTEM_PROMPT = `Você é um extrator de fatos auxiliar da Comissão de Avaliação e Seleção (CAS) de um edital de fomento cultural (PNAB) da Secretaria Municipal da Cultura de Caxias do Sul. Sua função é EXTRAIR fatos objetivos do dossiê pra apoiar o cálculo de pontos bônus -- você NUNCA decide pontuação, só extrai o que está escrito nos trechos numerados fornecidos.
@@ -56,13 +58,15 @@ Extraia, com base EXCLUSIVA nos trechos fornecidos:
 
 4. TÍTULO DO PROJETO: procure um campo explícito de título/nome do projeto no formulário de inscrição (ex.: "Título do Projeto", "Nome do Projeto"), normalmente logo no início do formulário, antes da descrição. Transcreva o título exatamente como está escrito. Se não houver um campo de título explícito e claramente identificável, responda null -- nunca crie um título a partir da descrição, dos objetivos ou de qualquer outro conteúdo do projeto.
 
+5. AUTODECLARAÇÃO SOBRE O PNAB CICLO 1: o formulário de inscrição normalmente tem uma pergunta direta do tipo "já foi contemplado com recursos da PNAB no Município de Caxias do Sul (Ciclo 1 / Edital nº 231/2024)?" com resposta Sim/Não. Identifique qual foi marcada. Se não encontrar essa pergunta/resposta nos trechos fornecidos, responda "nao_encontrado" -- nunca deduza a partir de outras informações do dossiê.
+
 Regras:
 - Nunca infira tipo de agente, gênero, raça/etnia ou deficiência a partir de nome, foto ou aparência -- só a partir de autodeclaração explícita em texto.
 - Não julgue se um bairro é ou não periférico -- só extraia o NOME do bairro exatamente como está escrito. Essa decisão é feita depois, fora desta extração.
-- Se a informação não estiver clara ou não existir no texto, deixe o campo null/vazio/indeterminado em vez de adivinhar.
+- Se a informação não estiver clara ou não existir no texto, deixe o campo null/vazio/indeterminado/nao_encontrado em vez de adivinhar.
 
 Responda em JSON estrito, exatamente neste formato:
-{"tipoProponente": "pessoa_fisica"|"pessoa_juridica_ou_coletivo"|"indeterminado", "tipoProponenteEvidencia": {"chunkIndex": number, "trecho": string} | null, "acoesBairros": [{"bairro": string, "chunkIndex": number, "trecho": string}], "autodeclaracaoAcaoAfirmativa": {"aplicavel": boolean, "descricao": string | null, "chunkIndex": number | null}, "tituloProjeto": string | null}`;
+{"tipoProponente": "pessoa_fisica"|"pessoa_juridica_ou_coletivo"|"indeterminado", "tipoProponenteEvidencia": {"chunkIndex": number, "trecho": string} | null, "acoesBairros": [{"bairro": string, "chunkIndex": number, "trecho": string}], "autodeclaracaoAcaoAfirmativa": {"aplicavel": boolean, "descricao": string | null, "chunkIndex": number | null}, "tituloProjeto": string | null, "autodeclaracaoCiclo1": "sim"|"nao"|"nao_encontrado"}`;
 
 function evidenceFrom(
   criterion: string,
@@ -103,13 +107,18 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
     "Tipo de agente cultural pessoa física ou jurídica ou coletivo. Bairro ou território onde a ação cultural será realizada. Autodeclaração de gênero, mulher, pessoa LGBTQIAPN+. Composição racial do quadro societário, pessoas negras, indígenas, pessoa com deficiência.";
   const titleQueryText =
     "Título ou nome do projeto cultural, conforme informado no campo de título do formulário de inscrição.";
-  const [factsEmbedding, titleEmbedding] = await embedTexts(client, env.OPENAI_EMBEDDING_MODEL, [
+  const ciclo1QueryText =
+    "Já foi contemplado com recursos da PNAB no Município de Caxias do Sul, PNAB Ciclo 1, Edital 231/2024, pergunta sim ou não no formulário de inscrição.";
+  const [factsEmbedding, titleEmbedding, ciclo1Embedding] = await embedTexts(client, env.OPENAI_EMBEDDING_MODEL, [
     factsQueryText,
     titleQueryText,
+    ciclo1QueryText,
   ]);
-  if (!factsEmbedding || !titleEmbedding) throw new Error("Falha ao gerar embedding de consulta.");
+  if (!factsEmbedding || !titleEmbedding || !ciclo1Embedding) {
+    throw new Error("Falha ao gerar embedding de consulta.");
+  }
 
-  const [factsResult, titleResult] = await Promise.all([
+  const [factsResult, titleResult, ciclo1Result] = await Promise.all([
     input.internalApi.matchDocumentChunks({
       proponentId: input.applicationId,
       queryEmbedding: factsEmbedding,
@@ -120,9 +129,14 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
       queryEmbedding: titleEmbedding,
       matchCount: MATCH_COUNT_TITLE,
     }),
+    input.internalApi.matchDocumentChunks({
+      proponentId: input.applicationId,
+      queryEmbedding: ciclo1Embedding,
+      matchCount: MATCH_COUNT_CICLO1,
+    }),
   ]);
   const chunksById = new Map<string, MatchedChunk>();
-  for (const chunk of [...factsResult.chunks, ...titleResult.chunks]) {
+  for (const chunk of [...factsResult.chunks, ...titleResult.chunks, ...ciclo1Result.chunks]) {
     if (!chunksById.has(chunk.chunkId)) chunksById.set(chunk.chunkId, chunk);
   }
   const chunks = Array.from(chunksById.values());
@@ -242,10 +256,65 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
     });
   }
 
-  // ---------- J: PNAB Ciclo 1 (100% determinístico, sem IA) ----------
+  // ---------- J: PNAB Ciclo 1 ----------
+  // A correspondência por nome contra cycle1_awardees é determinística
+  // (código, não IA -- ADR-8), mas sozinha pode falhar quando o proponente
+  // está inscrito sob um nome (ex.: associação civil) diferente do nome com
+  // que constou na lista de contemplados (ex.: instituição vinculada/nome
+  // fantasia do espaço). A autodeclaração do próprio proponente no
+  // formulário é o sinal mais direto quando ele afirma "sim" -- soberana
+  // sobre a ausência de correspondência de nome. Quando ele afirma "não" mas
+  // a lista aponta correspondência, isso é tratado como divergência a
+  // verificar, nunca como decisão silenciosa num sentido ou noutro.
   const jMax = maxByCode.get("J") ?? 10;
   const cycle1 = await input.internalApi.checkCycle1Match(input.applicationId);
-  if (cycle1.match === "sem_correspondencia") {
+  const nameMatchFound = cycle1.match !== "sem_correspondencia";
+
+  if (facts.autodeclaracaoCiclo1 === "sim") {
+    scores.push({
+      criterion: "J",
+      proposedScore: 0,
+      appliedBand: "autodeclarado",
+      justification: nameMatchFound
+        ? `O proponente autodeclarou, no formulário de inscrição, já ter sido contemplado no PNAB Ciclo 1 -- também confirmado pela correspondência de nome "${cycle1.awardeeName}" na lista de contemplados do Edital nº 231/2024.`
+        : "O proponente autodeclarou, no formulário de inscrição, já ter sido contemplado no PNAB Ciclo 1. Não foi encontrada correspondência de nome na lista de contemplados do Edital nº 231/2024, mas a autodeclaração do próprio proponente é considerada suficiente pra esta pontuação.",
+      humanReviewRequired: !nameMatchFound,
+    });
+    if (!nameMatchFound) {
+      await input.internalApi
+        .saveFlag({
+          proponentId: input.applicationId,
+          flag: {
+            tipo: "divergencia_documental",
+            descricao:
+              "O proponente autodeclarou contemplação anterior no PNAB Ciclo 1, mas o nome não foi encontrado na lista de contemplados do Edital nº 231/2024 -- pode ser variação de nome (ex.: razão social do proponente vs. nome da instituição/espaço vinculado que constou na lista) ou referir-se a outro ciclo/edital. Verificar manualmente.",
+            criadoPorAgente: AGENT_NAME,
+          },
+        })
+        .catch((err) => input.logger.warn({ err }, "save_flag_failed"));
+    }
+  } else if (nameMatchFound) {
+    const divergeDaAutodeclaracao = facts.autodeclaracaoCiclo1 === "nao";
+    scores.push({
+      criterion: "J",
+      proposedScore: 0,
+      appliedBand: cycle1.match === "exata" ? "correspondência exata" : "correspondência provável",
+      justification: `Nome "${cycle1.awardeeName}" encontrado na lista de contemplados do Ciclo 1 (Edital nº 231/2024), correspondência ${cycle1.match === "exata" ? "exata" : "provável"}.${divergeDaAutodeclaracao ? " O proponente autodeclarou NÃO ter sido contemplado anteriormente -- divergência com a lista oficial." : ""}`,
+      humanReviewRequired: cycle1.match === "provavel" || divergeDaAutodeclaracao,
+    });
+    await input.internalApi
+      .saveFlag({
+        proponentId: input.applicationId,
+        flag: {
+          tipo: cycle1.match === "exata" ? "ciclo1_exata" : "ciclo1_provavel",
+          descricao: divergeDaAutodeclaracao
+            ? `Possível participação anterior no Ciclo 1 (contemplado: "${cycle1.awardeeName}") -- DIVERGE da autodeclaração do proponente, que respondeu não ter sido contemplado. Requer verificação manual.`
+            : `Possível participação anterior no Ciclo 1 (contemplado: "${cycle1.awardeeName}").`,
+          criadoPorAgente: AGENT_NAME,
+        },
+      })
+      .catch((err) => input.logger.warn({ err }, "save_flag_failed"));
+  } else {
     const noDataYet = cycle1.totalAwardeesOnFile === 0;
     scores.push({
       criterion: "J",
@@ -256,24 +325,6 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
         : "Nenhuma correspondência encontrada na lista de contemplados do Ciclo 1 (Edital nº 231/2024).",
       humanReviewRequired: noDataYet,
     });
-  } else {
-    scores.push({
-      criterion: "J",
-      proposedScore: 0,
-      appliedBand: cycle1.match === "exata" ? "correspondência exata" : "correspondência provável",
-      justification: `Nome "${cycle1.awardeeName}" encontrado na lista de contemplados do Ciclo 1 (Edital nº 231/2024), correspondência ${cycle1.match === "exata" ? "exata" : "provável"}.`,
-      humanReviewRequired: cycle1.match === "provavel",
-    });
-    await input.internalApi
-      .saveFlag({
-        proponentId: input.applicationId,
-        flag: {
-          tipo: cycle1.match === "exata" ? "ciclo1_exata" : "ciclo1_provavel",
-          descricao: `Possível participação anterior no Ciclo 1 (contemplado: "${cycle1.awardeeName}").`,
-          criadoPorAgente: AGENT_NAME,
-        },
-      })
-      .catch((err) => input.logger.warn({ err }, "save_flag_failed"));
   }
 
   await input.internalApi.saveCriterionScores({ proponentId: input.applicationId, scores });

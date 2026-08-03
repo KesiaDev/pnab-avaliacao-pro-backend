@@ -228,23 +228,111 @@ describe("runBonusHJStage", () => {
     });
   });
 
-  it("busca chunks separadamente pra fatos e pra título do projeto, e deduplica", async () => {
+  it("J=0 quando o proponente autodeclara contemplação anterior, mesmo sem correspondência de nome na lista (caso real: nome do proponente diverge do nome que constou na lista)", async () => {
+    mockFacts({
+      tipoProponente: "pessoa_juridica_ou_coletivo",
+      tipoProponenteEvidencia: null,
+      acoesBairros: [],
+      autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
+      autodeclaracaoCiclo1: "sim",
+    });
+    const input = makeInput({
+      checkCycle1Match: vi.fn(async () => ({
+        match: "sem_correspondencia" as const,
+        awardeeName: null,
+        totalAwardeesOnFile: 51,
+      })),
+    });
+
+    await runBonusHJStage(input);
+
+    expect(input.internalApi.saveCriterionScores).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      scores: expect.arrayContaining([
+        expect.objectContaining({ criterion: "J", proposedScore: 0, humanReviewRequired: true }),
+      ]),
+    });
+    expect(input.internalApi.saveFlag).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      flag: expect.objectContaining({ tipo: "divergencia_documental" }),
+    });
+  });
+
+  it("J=0 sem revisão humana quando o proponente autodeclara contemplação e a lista também confirma", async () => {
+    mockFacts({
+      tipoProponente: "pessoa_juridica_ou_coletivo",
+      tipoProponenteEvidencia: null,
+      acoesBairros: [],
+      autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
+      autodeclaracaoCiclo1: "sim",
+    });
+    const input = makeInput({
+      checkCycle1Match: vi.fn(async () => ({
+        match: "exata" as const,
+        awardeeName: "Museu dos Capuchinhos do Rio Grande do Sul",
+        totalAwardeesOnFile: 51,
+      })),
+    });
+
+    await runBonusHJStage(input);
+
+    expect(input.internalApi.saveCriterionScores).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      scores: expect.arrayContaining([
+        expect.objectContaining({ criterion: "J", proposedScore: 0, humanReviewRequired: false }),
+      ]),
+    });
+  });
+
+  it("sinaliza divergência quando o proponente autodeclara NÃO ter sido contemplado, mas a lista encontra correspondência", async () => {
+    mockFacts({
+      tipoProponente: "pessoa_juridica_ou_coletivo",
+      tipoProponenteEvidencia: null,
+      acoesBairros: [],
+      autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
+      autodeclaracaoCiclo1: "nao",
+    });
+    const input = makeInput({
+      checkCycle1Match: vi.fn(async () => ({
+        match: "exata" as const,
+        awardeeName: "Fulano da Silva",
+        totalAwardeesOnFile: 51,
+      })),
+    });
+
+    await runBonusHJStage(input);
+
+    expect(input.internalApi.saveCriterionScores).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      scores: expect.arrayContaining([
+        expect.objectContaining({ criterion: "J", proposedScore: 0, humanReviewRequired: true }),
+      ]),
+    });
+    expect(input.internalApi.saveFlag).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      flag: expect.objectContaining({ tipo: "ciclo1_exata", descricao: expect.stringContaining("DIVERGE") }),
+    });
+  });
+
+  it("busca chunks separadamente pra fatos, título do projeto e autodeclaração do Ciclo 1, e deduplica", async () => {
     const matchDocumentChunks = vi
       .fn()
       .mockResolvedValueOnce({ chunks: [makeChunks()[0]] })
-      .mockResolvedValueOnce({ chunks: makeChunks() });
+      .mockResolvedValueOnce({ chunks: makeChunks() })
+      .mockResolvedValueOnce({ chunks: [makeChunks()[1]] });
     mockFacts({
       tipoProponente: "pessoa_fisica",
       tipoProponenteEvidencia: null,
       acoesBairros: [],
       autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
       tituloProjeto: null,
+      autodeclaracaoCiclo1: "nao_encontrado",
     });
     const input = makeInput({ matchDocumentChunks });
 
     await runBonusHJStage(input);
 
-    expect(matchDocumentChunks).toHaveBeenCalledTimes(2);
+    expect(matchDocumentChunks).toHaveBeenCalledTimes(3);
   });
 
   it("salva o título do projeto extraído do formulário de inscrição", async () => {
