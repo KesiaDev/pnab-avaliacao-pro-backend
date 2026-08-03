@@ -6,7 +6,7 @@ import type { CriterionScoreInput, EvidenceInput, MatchedChunk } from "../../int
 const AGENT_NAME = "bonus_h_j";
 const MATCH_COUNT_FACTS = 16;
 const MATCH_COUNT_TITLE = 8;
-const MATCH_COUNT_CICLO1 = 8;
+const MATCH_COUNT_CICLO1 = 12;
 
 // Item 4.8.1.2 do Edital 120/2026: bairros que NÃO se enquadram como área
 // periférica pra fins do bônus territorial (H) -- lista oficial do texto do
@@ -58,7 +58,7 @@ Extraia, com base EXCLUSIVA nos trechos fornecidos:
 
 4. TÍTULO DO PROJETO: procure um campo explícito de título/nome do projeto no formulário de inscrição (ex.: "Título do Projeto", "Nome do Projeto"), normalmente logo no início do formulário, antes da descrição. Transcreva o título exatamente como está escrito. Se não houver um campo de título explícito e claramente identificável, responda null -- nunca crie um título a partir da descrição, dos objetivos ou de qualquer outro conteúdo do projeto.
 
-5. AUTODECLARAÇÃO SOBRE O PNAB CICLO 1: o formulário de inscrição normalmente tem uma pergunta direta do tipo "já foi contemplado com recursos da PNAB no Município de Caxias do Sul (Ciclo 1 / Edital nº 231/2024)?" com resposta Sim/Não. Identifique qual foi marcada. Se não encontrar essa pergunta/resposta nos trechos fornecidos, responda "nao_encontrado" -- nunca deduza a partir de outras informações do dossiê.
+5. AUTODECLARAÇÃO SOBRE O PNAB CICLO 1: o formulário de inscrição (Google Forms) tem a pergunta de múltipla escolha "O agente cultural teve projeto aprovado no Município de Caxias do Sul com recursos da PNAB – Ciclo 1?", com opções "Sim" e "Não". No texto extraído do PDF, a opção marcada aparece normalmente com um círculo preenchido (●) ou marcador equivalente imediatamente antes dela, enquanto a opção não marcada aparece com um círculo vazio (○) ou sem marcador -- preste atenção nesse símbolo pra saber qual foi selecionada, não presuma pela ordem. Se as duas opções aparecerem sem nenhum indicativo visual de qual foi marcada, responda "nao_encontrado" -- nunca deduza a partir de outras informações do dossiê.
 
 Regras:
 - Nunca infira tipo de agente, gênero, raça/etnia ou deficiência a partir de nome, foto ou aparência -- só a partir de autodeclaração explícita em texto.
@@ -108,7 +108,7 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
   const titleQueryText =
     "Título ou nome do projeto cultural, conforme informado no campo de título do formulário de inscrição.";
   const ciclo1QueryText =
-    "Já foi contemplado com recursos da PNAB no Município de Caxias do Sul, PNAB Ciclo 1, Edital 231/2024, pergunta sim ou não no formulário de inscrição.";
+    "O agente cultural teve projeto aprovado no Município de Caxias do Sul com recursos da PNAB – Ciclo 1? Sim Não.";
   const [factsEmbedding, titleEmbedding, ciclo1Embedding] = await embedTexts(client, env.OPENAI_EMBEDDING_MODEL, [
     factsQueryText,
     titleQueryText,
