@@ -29,8 +29,8 @@ function makeCriteria(): EditalCriterion[] {
 
 function makeChunks(): MatchedChunk[] {
   return [
-    { chunkId: "chunk-1", fileId: "file-1", paginaInicial: 1, paginaFinal: 1, texto: "texto 1", similarity: 0.9 },
-    { chunkId: "chunk-2", fileId: "file-2", paginaInicial: 2, paginaFinal: 2, texto: "texto 2", similarity: 0.8 },
+    { chunkId: "chunk-1", fileId: "file-1", fileNome: "Formulário de Inscrição.pdf", paginaInicial: 1, paginaFinal: 1, texto: "texto 1", similarity: 0.9 },
+    { chunkId: "chunk-2", fileId: "file-2", fileNome: "Currículo.pdf", paginaInicial: 2, paginaFinal: 2, texto: "texto 2", similarity: 0.8 },
   ];
 }
 
@@ -149,13 +149,13 @@ describe("runEvaluatorStage", () => {
       .fn()
       .mockResolvedValueOnce({
         chunks: [
-          { chunkId: "chunk-1", fileId: "file-1", paginaInicial: 1, paginaFinal: 1, texto: "sobre qualidade", similarity: 0.9 },
+          { chunkId: "chunk-1", fileId: "file-1", fileNome: "Formulário de Inscrição.pdf", paginaInicial: 1, paginaFinal: 1, texto: "sobre qualidade", similarity: 0.9 },
         ],
       })
       .mockResolvedValueOnce({
         chunks: [
-          { chunkId: "chunk-1", fileId: "file-1", paginaInicial: 1, paginaFinal: 1, texto: "sobre qualidade", similarity: 0.9 },
-          { chunkId: "chunk-2", fileId: "file-2", paginaInicial: 3, paginaFinal: 3, texto: "sobre relevância cultural", similarity: 0.85 },
+          { chunkId: "chunk-1", fileId: "file-1", fileNome: "Formulário de Inscrição.pdf", paginaInicial: 1, paginaFinal: 1, texto: "sobre qualidade", similarity: 0.9 },
+          { chunkId: "chunk-2", fileId: "file-2", fileNome: "Currículo.pdf", paginaInicial: 3, paginaFinal: 3, texto: "sobre relevância cultural", similarity: 0.85 },
         ],
       });
     vi.mocked(openai.completeJSON).mockResolvedValue({
@@ -176,6 +176,38 @@ describe("runEvaluatorStage", () => {
     expect(input.internalApi.saveEvidence).toHaveBeenCalledWith({
       proponentId: "proponent-1",
       evidences: [expect.objectContaining({ criterion: "B", fileId: "file-2", paginaInicial: 3 })],
+    });
+  });
+
+  it("resolve citações [N] na justificativa pro arquivo/página reais, em vez de deixar o número solto", async () => {
+    vi.mocked(openai.completeJSON).mockResolvedValue({
+      result: {
+        criteria: {
+          A: {
+            proposedScore: 17,
+            justification: "A proposta é coerente [1] e a equipe é qualificada [2], mas o item [9] não existe.",
+            humanReviewRequired: false,
+            evidences: [],
+          },
+          B: { proposedScore: 15, justification: "ok", humanReviewRequired: false, evidences: [] },
+        },
+      },
+      usage: { inputTokens: 10, outputTokens: 10 },
+    });
+    const input = makeInput();
+
+    await runEvaluatorStage(input, ["A", "B"], "avaliador_teste");
+
+    expect(input.internalApi.saveCriterionScores).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      scores: [
+        expect.objectContaining({
+          criterion: "A",
+          justification:
+            "A proposta é coerente (Formulário de Inscrição.pdf, pág. 1) e a equipe é qualificada (Currículo.pdf, pág. 2), mas o item [9] não existe.",
+        }),
+        expect.objectContaining({ criterion: "B" }),
+      ],
     });
   });
 

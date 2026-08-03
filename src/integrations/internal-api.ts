@@ -159,6 +159,7 @@ export interface EditalCriterion {
 export interface MatchedChunk {
   chunkId: string;
   fileId: string;
+  fileNome: string;
   paginaInicial: number;
   paginaFinal: number;
   texto: string;

@@ -17,8 +17,9 @@ O parecer deve conter, nesta ordem, mas SEM títulos, subtítulos, numeração d
 3. Um parágrafo-síntese descrevendo, em linhas gerais, o que a documentação apresentada comprova (trajetória, natureza do projeto, pontos que se destacam no conjunto do dossiê).
 4. Um bloco por critério avaliado (todos os que constarem no resumo, na ordem em que aparecem): um cabeçalho curto só com o nome do critério (ex.: "Critério A"), seguido de um parágrafo corrido no padrão "atribuí N pontos, em um máximo de M. [justificativa em linguagem natural, baseada na justificativa técnica fornecida, mas reescrita em tom fluido]". Nunca liste subitens ou marcadores dentro do parágrafo do critério.
 5. Um parágrafo de potencialidades: o que se destaca de forma positiva no dossiê como um todo, em prosa corrida, sem rótulo.
-6. Um parágrafo de limitações documentais relevantes -- só o que for realmente pertinente pra explicar por que alguma nota não foi máxima ou por que algo ficou em aberto (ex.: dependência de portfólio ou autodeclaração, ausência de comprovação formal). Não inclua observações genéricas ou desconexas da avaliação. Se houver algum alerta relevante (indício de divergência, evidência ausente, participação anterior no Ciclo 1), incorpore-o neste parágrafo ou no parágrafo do critério ao qual se refere -- nunca como seção separada.
-7. Uma frase final isolada, no padrão: "Com base nos critérios avaliados e nas evidências apresentadas, atribuo ao proponente a nota individual de [notaIndividualTotal] pontos."
+6. Uma frase final isolada, no padrão: "Com base nos critérios avaliados e nas evidências apresentadas, atribuo ao proponente a nota individual de [notaIndividualTotal] pontos."
+
+Não inclua um parágrafo de limitações, ressalvas ou alertas -- esse tipo de observação (dependência de portfólio/autodeclaração, ausência de comprovação, evidência insuficiente, indício de divergência, participação anterior no Ciclo 1 etc.) já está registrado nas justificativas de cada critério, que a avaliadora acessa separadamente; a minuta de parecer não deve repeti-las.
 
 A abertura do parecer deve ser exatamente:
 "A avaliação foi realizada com base exclusivamente nas informações e nos documentos apresentados pelo agente cultural no ato da inscrição."

@@ -29,8 +29,8 @@ function makeCriteria(): EditalCriterion[] {
 
 function makeChunks(): MatchedChunk[] {
   return [
-    { chunkId: "c1", fileId: "file-1", paginaInicial: 1, paginaFinal: 1, texto: "texto 1", similarity: 0.9 },
-    { chunkId: "c2", fileId: "file-2", paginaInicial: 2, paginaFinal: 2, texto: "texto 2", similarity: 0.8 },
+    { chunkId: "c1", fileId: "file-1", fileNome: "Formulário de Inscrição.pdf", paginaInicial: 1, paginaFinal: 1, texto: "texto 1", similarity: 0.9 },
+    { chunkId: "c2", fileId: "file-2", fileNome: "Currículo.pdf", paginaInicial: 2, paginaFinal: 2, texto: "texto 2", similarity: 0.8 },
   ];
 }
 

@@ -65,6 +65,26 @@ Responda em JSON estrito, com uma entrada para cada um dos critérios ${allCodes
 {"criteria": {${exampleEntries}}}`;
 }
 
+// A IA cita trechos na justificativa usando o número entre colchetes do
+// contexto que recebeu (ex: "[6]") -- mas esse número só existe dentro
+// daquela chamada específica (cada grupo de critérios tem sua própria
+// numeração, reiniciada do zero) e nunca era resolvido pra nada depois de
+// salvo, deixando a avaliadora sem saber a que documento "[6]" se referia.
+// Substitui pela referência real (nome do arquivo + página) antes de
+// salvar. Números fora do intervalo de chunks (alucinação da IA) ficam
+// como estavam, sem quebrar o texto.
+function resolveCitations(text: string, chunks: MatchedChunk[]): string {
+  return text.replace(/\[(\d+)\]/g, (original, numStr: string) => {
+    const chunk = chunks[Number(numStr) - 1];
+    if (!chunk) return original;
+    const paginas =
+      chunk.paginaInicial === chunk.paginaFinal
+        ? `pág. ${chunk.paginaInicial}`
+        : `págs. ${chunk.paginaInicial}-${chunk.paginaFinal}`;
+    return `(${chunk.fileNome}, ${paginas})`;
+  });
+}
+
 export async function runEvaluatorStage(
   input: StageInput,
   criterionCodes: string[],
@@ -164,7 +184,7 @@ export async function runEvaluatorStage(
       criterion: criterionDef.code,
       proposedScore: clamped,
       appliedBand: null,
-      justification: raw.justification,
+      justification: resolveCitations(raw.justification, chunks),
       humanReviewRequired,
     });
 
