@@ -34,6 +34,13 @@ function mockBudget(budget: Record<string, unknown>) {
 
 function baseInternalApi() {
   return {
+    getCostStatus: vi.fn(async () => ({
+      budgetTotal: 0,
+      editalConsumed: 0,
+      limitPerApplication: 0,
+      applicationConsumed: 0,
+      blockOnExceed: true,
+    })),
     matchDocumentChunks: vi.fn(async () => ({ chunks: makeChunks() })),
     saveCostEntry: vi.fn(async () => ({ ok: true as const })),
     saveFlag: vi.fn(async () => ({ ok: true as const })),
@@ -54,6 +61,22 @@ function makeInput(overrides: Partial<ReturnType<typeof baseInternalApi>> = {}) 
 describe("runAuditoriaOrcamentariaStage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("bloqueia a etapa quando o orçamento do edital já foi excedido (ADR-10)", async () => {
+    const matchDocumentChunks = vi.fn(async () => ({ chunks: makeChunks() }));
+    const input = makeInput({
+      matchDocumentChunks,
+      getCostStatus: vi.fn(async () => ({
+        budgetTotal: 10,
+        editalConsumed: 10,
+        limitPerApplication: 0,
+        applicationConsumed: 0,
+        blockOnExceed: true,
+      })),
+    });
+    await expect(runAuditoriaOrcamentariaStage(input)).rejects.toThrow("Orçamento do edital excedido");
+    expect(matchDocumentChunks).not.toHaveBeenCalled();
   });
 
   it("lança erro quando não há chunks indexados", async () => {

@@ -46,6 +46,13 @@ function makeInput(overrides: Partial<ReturnType<typeof baseInternalApi>> = {}) 
 
 function baseInternalApi() {
   return {
+    getCostStatus: vi.fn(async () => ({
+      budgetTotal: 0,
+      editalConsumed: 0,
+      limitPerApplication: 0,
+      applicationConsumed: 0,
+      blockOnExceed: true,
+    })),
     getEditalCriteria: vi.fn(async () => ({ criteria: makeCriteria() })),
     matchDocumentChunks: vi.fn(async () => ({ chunks: makeChunks() })),
     saveCostEntry: vi.fn(async () => ({ ok: true as const })),
@@ -57,6 +64,22 @@ function baseInternalApi() {
 describe("runEvaluatorStage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("bloqueia a etapa quando o orçamento do edital já foi excedido (ADR-10)", async () => {
+    const input = makeInput({
+      getCostStatus: vi.fn(async () => ({
+        budgetTotal: 10,
+        editalConsumed: 12,
+        limitPerApplication: 0,
+        applicationConsumed: 0,
+        blockOnExceed: true,
+      })),
+    });
+    await expect(runEvaluatorStage(input, ["A", "B"], "avaliador_teste")).rejects.toThrow(
+      "Orçamento do edital excedido",
+    );
+    expect(input.internalApi.getEditalCriteria).not.toHaveBeenCalled();
   });
 
   it("lança erro quando nenhum critério é encontrado pro edital", async () => {

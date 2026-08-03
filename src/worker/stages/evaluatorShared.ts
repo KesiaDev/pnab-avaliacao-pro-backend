@@ -9,6 +9,7 @@ import type {
   MatchedChunk,
 } from "../../integrations/internal-api.js";
 import { containsUnexpectedScript } from "../../shared/textValidation.js";
+import { assertBudgetAvailable } from "./budgetGuard.js";
 
 // Quantos chunks (trechos) trazer por chamada -- cobre os critérios do
 // grupo (3-4 letras) sem estourar o contexto/custo (ADR-9: nunca manda o
@@ -91,6 +92,8 @@ export async function runEvaluatorStage(
   criterionCodes: string[],
   agentName: string,
 ): Promise<StageOutput> {
+  await assertBudgetAvailable(input, agentName);
+
   const env = loadEnv();
   const client = createOpenAIClient(env);
 
@@ -152,6 +155,7 @@ export async function runEvaluatorStage(
       stage: agentName,
       model: env.OPENAI_MODEL_EVALUATION,
       inputTokens: usage.inputTokens,
+      cachedTokens: usage.cachedTokens,
       outputTokens: usage.outputTokens,
       cost,
     })

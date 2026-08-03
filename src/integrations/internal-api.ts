@@ -215,8 +215,17 @@ export interface CostEntryInput {
   stage: string;
   model: string;
   inputTokens: number;
+  cachedTokens?: number;
   outputTokens: number;
   cost: number;
+}
+
+export interface CostStatus {
+  budgetTotal: number;
+  editalConsumed: number;
+  limitPerApplication: number;
+  applicationConsumed: number;
+  blockOnExceed: boolean;
 }
 
 export class InternalApiError extends Error {
@@ -414,6 +423,10 @@ export function createInternalApiClient(
       }),
     saveCostEntry: (input: CostEntryInput) =>
       signedPost<{ ok: true }>(env, "/api/internal/cost-entries", input),
+    getCostStatus: (input: { editalId: string; proponentId: string }) =>
+      signedPost<CostStatus>(env, `/api/internal/proponents/${input.proponentId}/cost-status`, {
+        editalId: input.editalId,
+      }),
     getEvaluationContext: (proponentId: string) =>
       signedPost<{
         proponentNome: string;

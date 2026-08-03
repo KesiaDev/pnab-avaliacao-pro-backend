@@ -19,6 +19,13 @@ const { runParecerStage } = await import("../src/worker/stages/parecer.js");
 function makeInput(overrides: Record<string, unknown> = {}) {
   const saveParecer = vi.fn(async () => ({ ok: true as const, versao: 1 }));
   const internalApi = {
+    getCostStatus: vi.fn(async () => ({
+      budgetTotal: 0,
+      editalConsumed: 0,
+      limitPerApplication: 0,
+      applicationConsumed: 0,
+      blockOnExceed: true,
+    })),
     getEvaluationContext: vi.fn(async () => ({
       proponentNome: "Proponente Teste",
       criterionScores: [
@@ -53,6 +60,20 @@ function makeInput(overrides: Record<string, unknown> = {}) {
 describe("runParecerStage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("bloqueia a etapa quando o orçamento do edital já foi excedido (ADR-10)", async () => {
+    const { input, saveParecer } = makeInput({
+      getCostStatus: vi.fn(async () => ({
+        budgetTotal: 10,
+        editalConsumed: 10,
+        limitPerApplication: 0,
+        applicationConsumed: 0,
+        blockOnExceed: true,
+      })),
+    });
+    await expect(runParecerStage(input)).rejects.toThrow("Orçamento do edital excedido");
+    expect(saveParecer).not.toHaveBeenCalled();
   });
 
   it("grava o texto do parecer retornado pela IA", async () => {

@@ -2,6 +2,7 @@ import type { StageInput, StageOutput } from "./types.js";
 import { loadEnv } from "../../shared/env.js";
 import { createOpenAIClient, embedTexts, completeJSON, estimateCostUsd } from "../../integrations/openai.js";
 import type { EvidenceInput, FlagInput, MatchedChunk } from "../../integrations/internal-api.js";
+import { assertBudgetAvailable } from "./budgetGuard.js";
 
 const AGENT_NAME = "auditoria_orcamentaria";
 const MATCH_COUNT = 20;
@@ -54,6 +55,8 @@ function formatBRL(value: number): string {
 }
 
 export async function runAuditoriaOrcamentariaStage(input: StageInput): Promise<StageOutput> {
+  await assertBudgetAvailable(input, AGENT_NAME);
+
   const env = loadEnv();
   const client = createOpenAIClient(env);
 
@@ -93,6 +96,7 @@ export async function runAuditoriaOrcamentariaStage(input: StageInput): Promise<
       stage: AGENT_NAME,
       model: env.OPENAI_MODEL_EXTRACTION,
       inputTokens: usage.inputTokens,
+      cachedTokens: usage.cachedTokens,
       outputTokens: usage.outputTokens,
       cost,
     })

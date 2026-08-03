@@ -1,6 +1,9 @@
 import type { StageInput, StageOutput } from "./types.js";
 import { loadEnv } from "../../shared/env.js";
-import { createOpenAIClient, embedTexts } from "../../integrations/openai.js";
+import { createOpenAIClient, embedTextsWithUsage, estimateCostUsd } from "../../integrations/openai.js";
+import { assertBudgetAvailable } from "./budgetGuard.js";
+
+const AGENT_NAME = "indexacao";
 
 // Limite de segurança por chamada à API de embeddings -- bem abaixo do teto
 // real da OpenAI (2048 inputs), só evita um payload gigante numa única
@@ -18,21 +21,26 @@ export async function runIndexacaoStage(input: StageInput): Promise<StageOutput>
     return { ok: true, details: { chunksIndexados: 0 } };
   }
 
+  await assertBudgetAvailable(input, AGENT_NAME);
+
   const env = loadEnv();
   const client = createOpenAIClient(env);
 
   let chunksIndexados = 0;
+  let totalInputTokens = 0;
   const avisos: string[] = [];
 
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
     let embeddings: number[][];
     try {
-      embeddings = await embedTexts(
+      const result = await embedTextsWithUsage(
         client,
         env.OPENAI_EMBEDDING_MODEL,
         batch.map((c) => c.texto),
       );
+      embeddings = result.embeddings;
+      totalInputTokens += result.usage.inputTokens;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       avisos.push(`lote ${i}-${i + batch.length}: ${message}`);
@@ -53,6 +61,25 @@ export async function runIndexacaoStage(input: StageInput): Promise<StageOutput>
         avisos.push(`chunk ${chunk.chunkId}: ${message}`);
       }
     }
+  }
+
+  // Rastreamento de custo (ADR-10) ficava totalmente de fora aqui -- a
+  // etapa que mais gasta em embeddings (até centenas de chunks por
+  // proponente) nunca aparecia na aba Custos. Uma linha só por execução,
+  // igual ao padrão das outras etapas.
+  if (totalInputTokens > 0) {
+    const cost = estimateCostUsd(env.OPENAI_EMBEDDING_MODEL, { inputTokens: totalInputTokens, outputTokens: 0 });
+    await input.internalApi
+      .saveCostEntry({
+        editalId: input.editalId,
+        proponentId: input.applicationId,
+        stage: AGENT_NAME,
+        model: env.OPENAI_EMBEDDING_MODEL,
+        inputTokens: totalInputTokens,
+        outputTokens: 0,
+        cost,
+      })
+      .catch((err) => input.logger.warn({ err }, "cost_entry_save_failed"));
   }
 
   if (avisos.length > 0) {

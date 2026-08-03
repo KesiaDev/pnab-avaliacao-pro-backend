@@ -20,7 +20,27 @@ export async function embedTexts(
 
 export interface JsonCompletionUsage {
   inputTokens: number;
+  cachedTokens?: number;
   outputTokens: number;
+}
+
+// Igual a embedTexts(), mas também devolve o uso de tokens -- indexacao.ts
+// precisa disso pra registrar o custo real da indexação (antes ficava de
+// fora do rastreamento de custos inteiramente, já que embedTexts() descarta
+// o campo usage da resposta da OpenAI).
+export async function embedTextsWithUsage(
+  client: OpenAI,
+  model: string,
+  texts: string[],
+): Promise<{ embeddings: number[][]; usage: JsonCompletionUsage }> {
+  if (texts.length === 0) {
+    return { embeddings: [], usage: { inputTokens: 0, cachedTokens: 0, outputTokens: 0 } };
+  }
+  const res = await client.embeddings.create({ model, input: texts });
+  return {
+    embeddings: res.data.map((d) => d.embedding),
+    usage: { inputTokens: res.usage?.total_tokens ?? 0, cachedTokens: 0, outputTokens: 0 },
+  };
 }
 
 export interface JsonCompletionResult<T> {
@@ -59,6 +79,7 @@ export async function completeJSON<T>(
     result,
     usage: {
       inputTokens: res.usage?.prompt_tokens ?? 0,
+      cachedTokens: res.usage?.prompt_tokens_details?.cached_tokens ?? 0,
       outputTokens: res.usage?.completion_tokens ?? 0,
     },
   };

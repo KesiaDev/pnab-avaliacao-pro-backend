@@ -36,6 +36,13 @@ function makeChunks(): MatchedChunk[] {
 
 function baseInternalApi() {
   return {
+    getCostStatus: vi.fn(async () => ({
+      budgetTotal: 0,
+      editalConsumed: 0,
+      limitPerApplication: 0,
+      applicationConsumed: 0,
+      blockOnExceed: true,
+    })),
     getEditalCriteria: vi.fn(async () => ({ criteria: makeCriteria() })),
     matchDocumentChunks: vi.fn(async () => ({ chunks: makeChunks() })),
     saveCostEntry: vi.fn(async () => ({ ok: true as const })),
@@ -72,6 +79,20 @@ function mockFacts(facts: Record<string, unknown>) {
 describe("runBonusHJStage", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("bloqueia a etapa quando o limite de custo por proponente já foi excedido (ADR-10)", async () => {
+    const input = makeInput({
+      getCostStatus: vi.fn(async () => ({
+        budgetTotal: 0,
+        editalConsumed: 0,
+        limitPerApplication: 1,
+        applicationConsumed: 1.5,
+        blockOnExceed: true,
+      })),
+    });
+    await expect(runBonusHJStage(input)).rejects.toThrow("Limite de custo por proponente excedido");
+    expect(input.internalApi.getEditalCriteria).not.toHaveBeenCalled();
   });
 
   it("H=5 quando o bairro extraído não está na lista de excluídos", async () => {

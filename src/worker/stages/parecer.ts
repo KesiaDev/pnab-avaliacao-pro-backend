@@ -2,6 +2,7 @@ import type { StageInput, StageOutput } from "./types.js";
 import { loadEnv } from "../../shared/env.js";
 import { createOpenAIClient, completeJSON, estimateCostUsd } from "../../integrations/openai.js";
 import { containsUnexpectedScript } from "../../shared/textValidation.js";
+import { assertBudgetAvailable } from "./budgetGuard.js";
 
 const AGENT_NAME = "agente_parecer";
 
@@ -37,6 +38,8 @@ Regras obrigatórias:
 Responda em JSON estrito: {"parecer": string}`;
 
 export async function runParecerStage(input: StageInput): Promise<StageOutput> {
+  await assertBudgetAvailable(input, AGENT_NAME);
+
   const env = loadEnv();
   const client = createOpenAIClient(env);
 
@@ -85,6 +88,7 @@ export async function runParecerStage(input: StageInput): Promise<StageOutput> {
       stage: AGENT_NAME,
       model: env.OPENAI_MODEL_AUDIT,
       inputTokens: usage.inputTokens,
+      cachedTokens: usage.cachedTokens,
       outputTokens: usage.outputTokens,
       cost,
     })
