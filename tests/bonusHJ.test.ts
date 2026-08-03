@@ -258,6 +258,33 @@ describe("runBonusHJStage", () => {
     });
   });
 
+  it("grava evidência (arquivo/página) pra autodeclaração de contemplação anterior no Ciclo 1, não só a flag", async () => {
+    mockFacts({
+      tipoProponente: "pessoa_juridica_ou_coletivo",
+      tipoProponenteEvidencia: null,
+      acoesBairros: [],
+      autodeclaracaoAcaoAfirmativa: { aplicavel: false, descricao: null, chunkIndex: null },
+      autodeclaracaoCiclo1: "sim",
+      autodeclaracaoCiclo1Evidencia: { chunkIndex: 1, trecho: "O agente cultural teve projeto aprovado... Sim" },
+    });
+    const input = makeInput({
+      checkCycle1Match: vi.fn(async () => ({
+        match: "sem_correspondencia" as const,
+        awardeeName: null,
+        totalAwardeesOnFile: 51,
+      })),
+    });
+
+    await runBonusHJStage(input);
+
+    expect(input.internalApi.saveEvidence).toHaveBeenCalledWith({
+      proponentId: "proponent-1",
+      evidences: expect.arrayContaining([
+        expect.objectContaining({ criterion: "J", fileId: "file-1", paginaInicial: 1 }),
+      ]),
+    });
+  });
+
   it("J=0 sem revisão humana quando o proponente autodeclara contemplação e a lista também confirma", async () => {
     mockFacts({
       tipoProponente: "pessoa_juridica_ou_coletivo",

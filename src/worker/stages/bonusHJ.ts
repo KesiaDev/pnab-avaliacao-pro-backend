@@ -41,6 +41,7 @@ interface ExtractedFacts {
   };
   tituloProjeto: string | null;
   autodeclaracaoCiclo1: "sim" | "nao" | "nao_encontrado";
+  autodeclaracaoCiclo1Evidencia: { chunkIndex: number; trecho: string } | null;
 }
 
 const SYSTEM_PROMPT = `Você é um extrator de fatos auxiliar da Comissão de Avaliação e Seleção (CAS) de um edital de fomento cultural (PNAB) da Secretaria Municipal da Cultura de Caxias do Sul. Sua função é EXTRAIR fatos objetivos do dossiê pra apoiar o cálculo de pontos bônus -- você NUNCA decide pontuação, só extrai o que está escrito nos trechos numerados fornecidos.
@@ -58,7 +59,7 @@ Extraia, com base EXCLUSIVA nos trechos fornecidos:
 
 4. TÍTULO DO PROJETO: procure um campo explícito de título/nome do projeto no formulário de inscrição (ex.: "Título do Projeto", "Nome do Projeto"), normalmente logo no início do formulário, antes da descrição. Transcreva o título exatamente como está escrito. Se não houver um campo de título explícito e claramente identificável, responda null -- nunca crie um título a partir da descrição, dos objetivos ou de qualquer outro conteúdo do projeto.
 
-5. AUTODECLARAÇÃO SOBRE O PNAB CICLO 1: o formulário de inscrição (Google Forms) tem a pergunta de múltipla escolha "O agente cultural teve projeto aprovado no Município de Caxias do Sul com recursos da PNAB – Ciclo 1?", com opções "Sim" e "Não". No texto extraído do PDF, a opção marcada aparece normalmente com um círculo preenchido (●) ou marcador equivalente imediatamente antes dela, enquanto a opção não marcada aparece com um círculo vazio (○) ou sem marcador -- preste atenção nesse símbolo pra saber qual foi selecionada, não presuma pela ordem. Se as duas opções aparecerem sem nenhum indicativo visual de qual foi marcada, responda "nao_encontrado" -- nunca deduza a partir de outras informações do dossiê.
+5. AUTODECLARAÇÃO SOBRE O PNAB CICLO 1: o formulário de inscrição (Google Forms) tem a pergunta de múltipla escolha "O agente cultural teve projeto aprovado no Município de Caxias do Sul com recursos da PNAB – Ciclo 1?", com opções "Sim" e "Não". No texto extraído do PDF, a opção marcada aparece normalmente com um círculo preenchido (●) ou marcador equivalente imediatamente antes dela, enquanto a opção não marcada aparece com um círculo vazio (○) ou sem marcador -- preste atenção nesse símbolo pra saber qual foi selecionada, não presuma pela ordem. Se as duas opções aparecerem sem nenhum indicativo visual de qual foi marcada, responda "nao_encontrado" -- nunca deduza a partir de outras informações do dossiê. Reporte também o número do trecho ([N]) onde encontrou essa pergunta/resposta.
 
 Regras:
 - Nunca infira tipo de agente, gênero, raça/etnia ou deficiência a partir de nome, foto ou aparência -- só a partir de autodeclaração explícita em texto.
@@ -66,7 +67,7 @@ Regras:
 - Se a informação não estiver clara ou não existir no texto, deixe o campo null/vazio/indeterminado/nao_encontrado em vez de adivinhar.
 
 Responda em JSON estrito, exatamente neste formato:
-{"tipoProponente": "pessoa_fisica"|"pessoa_juridica_ou_coletivo"|"indeterminado", "tipoProponenteEvidencia": {"chunkIndex": number, "trecho": string} | null, "acoesBairros": [{"bairro": string, "chunkIndex": number, "trecho": string}], "autodeclaracaoAcaoAfirmativa": {"aplicavel": boolean, "descricao": string | null, "chunkIndex": number | null}, "tituloProjeto": string | null, "autodeclaracaoCiclo1": "sim"|"nao"|"nao_encontrado"}`;
+{"tipoProponente": "pessoa_fisica"|"pessoa_juridica_ou_coletivo"|"indeterminado", "tipoProponenteEvidencia": {"chunkIndex": number, "trecho": string} | null, "acoesBairros": [{"bairro": string, "chunkIndex": number, "trecho": string}], "autodeclaracaoAcaoAfirmativa": {"aplicavel": boolean, "descricao": string | null, "chunkIndex": number | null}, "tituloProjeto": string | null, "autodeclaracaoCiclo1": "sim"|"nao"|"nao_encontrado", "autodeclaracaoCiclo1Evidencia": {"chunkIndex": number, "trecho": string} | null}`;
 
 function evidenceFrom(
   criterion: string,
@@ -280,6 +281,14 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
         : "O proponente autodeclarou, no formulário de inscrição, já ter sido contemplado no PNAB Ciclo 1. Não foi encontrada correspondência de nome na lista de contemplados do Edital nº 231/2024, mas a autodeclaração do próprio proponente é considerada suficiente pra esta pontuação.",
       humanReviewRequired: !nameMatchFound,
     });
+    const ev = evidenceFrom(
+      "J",
+      facts.autodeclaracaoCiclo1Evidencia?.chunkIndex ?? null,
+      chunks,
+      "Autodeclaração de contemplação anterior no PNAB Ciclo 1 (respondeu Sim no formulário de inscrição).",
+      facts.autodeclaracaoCiclo1Evidencia?.trecho ?? null,
+    );
+    if (ev) evidences.push(ev);
     if (!nameMatchFound) {
       await input.internalApi
         .saveFlag({
@@ -314,6 +323,16 @@ export async function runBonusHJStage(input: StageInput): Promise<StageOutput> {
         },
       })
       .catch((err) => input.logger.warn({ err }, "save_flag_failed"));
+    if (divergeDaAutodeclaracao) {
+      const ev = evidenceFrom(
+        "J",
+        facts.autodeclaracaoCiclo1Evidencia?.chunkIndex ?? null,
+        chunks,
+        `Autodeclaração de NÃO contemplação anterior no PNAB Ciclo 1 (respondeu Não no formulário), divergente da lista oficial (contemplado: "${cycle1.awardeeName}").`,
+        facts.autodeclaracaoCiclo1Evidencia?.trecho ?? null,
+      );
+      if (ev) evidences.push(ev);
+    }
   } else {
     const noDataYet = cycle1.totalAwardeesOnFile === 0;
     scores.push({
